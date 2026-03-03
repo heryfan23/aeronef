@@ -91,7 +91,7 @@ class Temps_vie(QFrame):
         
          # Frame Ajout
         self.frame_temps = QFrame(self)
-        self.frame_temps.setGeometry(10,110,1000,620)  # increased height for extra fields
+        self.frame_temps.setGeometry(10,110,1000,490)  # increased height for extra fields
         self.frame_temps.setStyleSheet("background-color:white")
         
         # immatriculation
@@ -159,7 +159,7 @@ class Temps_vie(QFrame):
         self.date_installation.setDisplayFormat("yyyy-MM-dd")
         self.date_installation.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
         
-        self.potentiel_date_label = QLabel("Potentiel Date:", self.frame_temps)
+        self.potentiel_date_label = QLabel("Potentiel Date (Pom):", self.frame_temps)
         self.potentiel_date_label.setGeometry(20, 340, 250, 30)
         self.potentiel_date_label.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
         self.potentiel_date = QDateEdit(self.frame_temps)

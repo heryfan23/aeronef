@@ -74,6 +74,7 @@ class Recapitulatifs(QFrame):
         self.immatriculation_input = QComboBox(self.frame_recapitulatifs)
         self.immatriculation_input.setGeometry(300, 19, 300, 35)
         self.immatriculation_input.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
+        self.immatriculation_input.currentTextChanged.connect(self.fill_date_proc_rev_from_temps_vie)
         
         self.types_ = QLabel("Types:", self.frame_recapitulatifs)
         self.types_.setGeometry(20, 50, 300, 80)
@@ -193,6 +194,39 @@ class Recapitulatifs(QFrame):
                 self.immatriculation_input.addItem(immat[0])
         except Exception as e:
             print('Erreur chargement immatriculations:', e)
+    
+    def fill_date_proc_rev_from_temps_vie(self):
+        """Remplit automatiquement date_proc_rev, pot_restant et pot_restant_cycles avec les valeurs calculées depuis temps_vie"""
+        immat = self.immatriculation_input.currentText().strip()
+        
+        if not immat:
+            self.date_proc_rev_input.clear()
+            self.pot_restant_input.clear()
+            self.pot_restant_cycles_input.clear()
+            return
+        
+        try:
+            # Récupérer le dernier composant de temps_vie pour cette immatriculation
+            self.cursor.execute(
+                'SELECT dates_proc_rev, pot_restant, pot_restant_cycles FROM temps_vie WHERE immatriculation=? ORDER BY rowid DESC LIMIT 1',
+                (immat,)
+            )
+            row = self.cursor.fetchone()
+            
+            if row:
+                dates_proc_rev, pot_restant, pot_restant_cycles = row
+                self.date_proc_rev_input.setText(dates_proc_rev or "")
+                self.pot_restant_input.setText(pot_restant or "")
+                self.pot_restant_cycles_input.setText(pot_restant_cycles or "")
+            else:
+                self.date_proc_rev_input.clear()
+                self.pot_restant_input.clear()
+                self.pot_restant_cycles_input.clear()
+        except Exception as e:
+            print('Erreur récupération données temps_vie:', e)
+            self.date_proc_rev_input.clear()
+            self.pot_restant_input.clear()
+            self.pot_restant_cycles_input.clear()
     
     def load_recapitulatifs(self):
         """Charge les recapitulatifs depuis la base de donnees"""
