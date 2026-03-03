@@ -147,6 +147,7 @@ class Bilan(QFrame):
             self.db_path = os.path.join(os.path.dirname(__file__), 'aviation.db')
             self.conn = sqlite3.connect(self.db_path)
             self.cursor = self.conn.cursor()
+            self.cursor.execute('PRAGMA foreign_keys = ON')
             # create table with all expected columns
             self.cursor.execute('''
                 CREATE TABLE IF NOT EXISTS bilan (
@@ -157,9 +158,9 @@ class Bilan(QFrame):
                     heures_dernier_inspection TEXT,
                     heures_prochains TEXT,
                     date_prochain_inspection TEXT,
-                    FOREIGN KEY (immatriculation) REFERENCES aircrafts(immatriculation)
+                    FOREIGN KEY (immatriculation) REFERENCES aircrafts(immatriculation) ON DELETE CASCADE
                 )
-            ''')
+            ''' )
             # ensure older schemas are upgraded with missing columns
             for col in ('heures_dernier_inspection', 'heures_prochains', 'date_prochain_inspection'):
                 try:

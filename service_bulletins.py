@@ -150,6 +150,7 @@ class ServicesBulletins(QFrame):
             self.db_path = os.path.join(os.path.dirname(__file__), 'aviation.db')
             self.conn = sqlite3.connect(self.db_path)
             self.cursor = self.conn.cursor()
+            self.cursor.execute('PRAGMA foreign_keys = ON')
             # create table with all needed columns; older databases will get missing ones added below
             self.cursor.execute('''
                 CREATE TABLE IF NOT EXISTS service_bulletins (
@@ -162,9 +163,9 @@ class ServicesBulletins(QFrame):
                     date_application TEXT,
                     date_realisation TEXT,
                     date_prochaine TEXT,
-                    FOREIGN KEY (immatriculation) REFERENCES aircrafts(immatriculation)
+                    FOREIGN KEY (immatriculation) REFERENCES aircrafts(immatriculation) ON DELETE CASCADE
                 )
-            ''')
+            ''' )
             # ensure any missing columns exist (migration)
             cols = [row[1] for row in self.cursor.execute("PRAGMA table_info(service_bulletins)").fetchall()]
             for col_name in ("ref_sbs","description","statut","date_application","date_realisation","date_prochaine"):

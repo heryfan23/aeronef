@@ -129,6 +129,7 @@ class Travaux(QFrame):
             self.db_path = os.path.join(os.path.dirname(__file__), 'aviation.db')
             self.conn = sqlite3.connect(self.db_path)
             self.cursor = self.conn.cursor()
+            self.cursor.execute('PRAGMA foreign_keys = ON')
             self.cursor.execute('''
                 CREATE TABLE IF NOT EXISTS travaux (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -136,9 +137,9 @@ class Travaux(QFrame):
                     types_travaux TEXT,
                     date_validation TEXT,
                     date_excecution TEXT,
-                    FOREIGN KEY (immatriculation) REFERENCES aircrafts(immatriculation)
+                    FOREIGN KEY (immatriculation) REFERENCES aircrafts(immatriculation) ON DELETE CASCADE
                 )
-            ''')
+            ''' )
             self.conn.commit()
         except Exception as e:
             print('Erreur initialisation DB:', e)
@@ -147,6 +148,10 @@ class Travaux(QFrame):
         self.load_immatriculations()
         self.load_travaux()
         self.selected_rows = []
+        
+        # Flag pour mode édition
+        self.edit_mode = False
+        self.current_edit_immat = None
         
     def load_immatriculations(self):
         """Charge tous les matricules depuis la table aircrafts"""
@@ -184,9 +189,10 @@ class Travaux(QFrame):
                 self.tableau_affichage.setItem(idx, col, item)
     
     def save_travaux(self):
-        """Sauvegarde les donnees du travaux dans la base de donnees"""
+        """Sauvegarde ou met à jour les donnees du travaux"""
         immat = self.immatriculation_input.currentText().strip()
-        types_travaux = self.types_travaux.text().strip()
+        # the types_travaux field is a QComboBox, use currentText() instead of text()
+        types_travaux = self.types_travaux.currentText().strip()
         date_validation = self.date_validation.date().toString("yyyy-MM-dd")
         date_excecution = self.date_excecution.date().toString("yyyy-MM-dd")
         
@@ -200,13 +206,21 @@ class Travaux(QFrame):
             return
         
         try:
-            self.cursor.execute(
-                'INSERT INTO travaux (immatriculation, types_travaux, date_validation, date_excecution) VALUES (?, ?, ?, ?)',
-                (immat, types_travaux, date_validation, date_excecution)
-            )
+            if self.edit_mode:
+                # Mode édition: UPDATE
+                self.cursor.execute(
+                    'UPDATE travaux SET types_travaux=?, date_validation=?, date_excecution=? WHERE immatriculation=?',
+                    (types_travaux, date_validation, date_excecution, self.current_edit_immat)
+                )
+            else:
+                # Mode création: INSERT
+                self.cursor.execute(
+                    'INSERT INTO travaux (immatriculation, types_travaux, date_validation, date_excecution) VALUES (?, ?, ?, ?)',
+                    (immat, types_travaux, date_validation, date_excecution)
+                )
             self.conn.commit()
         except Exception as e:
-            print('Erreur insertion DB:', e)
+            print('Erreur sauvegarde DB:', e)
             msg = QMessageBox(self)
             msg.setIcon(QMessageBox.Icon.Critical)
             msg.setWindowTitle("Erreur")
@@ -317,38 +331,21 @@ class Travaux(QFrame):
         
         # Remplir les champs du formulaire
         self.immatriculation_input.setCurrentText(immat)
-        self.types_travaux.setText(types_travaux)
+        self.types_travaux.setCurrentText(types_travaux)
         self.date_validation.setDate(QDate.fromString(date_validation, "yyyy-MM-dd"))
         self.date_excecution.setDate(QDate.fromString(date_excecution, "yyyy-MM-dd"))
         
-        # Changer le titre et le comportement du formulaire
+        # Activer le mode édition
+        self.edit_mode = True
+        self.current_edit_immat = immat
+        
+        # Changer le titre du bouton
         self.enregistrer.setText("Mettre a jour")
-        self.enregistrer.disconnect()
-        self.enregistrer.clicked.connect(lambda: self.update_travaux(immat))
         
         self.tableau_affichage.setVisible(False)
         self.frame_travaux.show()
     
-    def update_travaux(self, immat):
-        types_travaux = self.types_travaux.text().strip()
-        date_validation = self.date_validation.date().toString("yyyy-MM-dd")
-        date_excecution = self.date_excecution.date().toString("yyyy-MM-dd")
-        
-        try:
-            self.cursor.execute(
-                'UPDATE travaux SET types_travaux=?, date_validation=?, date_excecution=? WHERE immatriculation=?',
-                (types_travaux, date_validation, date_excecution, immat)
-            )
-            self.conn.commit()
-        except Exception as e:
-            print('Erreur mise a jour DB:', e)
-            return
-        
-        # Reinitialiser le formulaire
-        self.reset_form()
-        self.load_travaux()
-        self.tableau_affichage.setVisible(True)
-        self.frame_travaux.hide()
+
     
     def supprimer_travaux(self, row, immat):
         # Recuperer l'ID stocke dans les donnees de l'item
@@ -402,12 +399,13 @@ class Travaux(QFrame):
         dialog.accept()
     
     def reset_form(self):
-        # self.types_travaux.clear()
+        self.types_travaux.setCurrentIndex(0)
         self.date_validation.setDate(QDate.currentDate())
         self.date_excecution.setDate(QDate.currentDate())
         self.enregistrer.setText("Enregistrer")
-        self.enregistrer.disconnect()
-        self.enregistrer.clicked.connect(self.save_travaux)
+        # Désactiver le mode édition
+        self.edit_mode = False
+        self.current_edit_immat = None
         
     def ajouter_travaux(self):
         self.reset_form()

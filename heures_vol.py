@@ -143,6 +143,7 @@ class HeuresVol(QFrame):
             self.db_path = os.path.join(os.path.dirname(__file__), 'aviation.db')
             self.conn = sqlite3.connect(self.db_path)
             self.cursor = self.conn.cursor()
+            self.cursor.execute('PRAGMA foreign_keys = ON')
             # on inclut une colonne cycles ; la colonne temps_cumul reste présente pour compatibilité mais n'est plus utilisée
             self.cursor.execute('''
                 CREATE TABLE IF NOT EXISTS heures_vol (
@@ -152,9 +153,9 @@ class HeuresVol(QFrame):
                     temps_vol TEXT,
                     cycles INTEGER DEFAULT 0,
                     temps_cumul TEXT,
-                    FOREIGN KEY (immatriculation) REFERENCES aircrafts(immatriculation)
+                    FOREIGN KEY (immatriculation) REFERENCES aircrafts(immatriculation) ON DELETE CASCADE
                 )
-            ''')
+            ''' )
             # si l'ancienne table existait sans cycles, on s'assure d'ajouter la colonne
             try:
                 self.cursor.execute("ALTER TABLE heures_vol ADD COLUMN cycles INTEGER DEFAULT 0")

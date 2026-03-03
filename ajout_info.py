@@ -145,6 +145,8 @@ class AjoutInfo(QFrame):
             self.db_path = os.path.join(os.path.dirname(__file__), 'aviation.db')
             self.conn = sqlite3.connect(self.db_path)
             self.cursor = self.conn.cursor()
+            # make sure foreign key constraints are enforced (required for ON DELETE CASCADE to work)
+            self.cursor.execute('PRAGMA foreign_keys = ON')
             self.cursor.execute('''
                 CREATE TABLE IF NOT EXISTS aircrafts (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -364,8 +366,28 @@ class AjoutInfo(QFrame):
         dialog.exec()
     
     def confirm_delete_aircraft(self, immat, dialog):
-        """Confirme la suppression de l'aéronef"""
+        """Confirme la suppression de l'aéronef et des données associées.
+        En plus de retirer l'enregistrement dans la table aircrafts, on supprime
+        explicitement toutes les lignes liées dans les autres tables. Si la base
+        a été initialisée avec des FOREIGN KEY ... ON DELETE CASCADE, ces
+        suppressions supplémentaires ne font pas de mal et garantissent un
+        comportement correct même pour d'anciennes bases de données.
+        """
         try:
+            # ensure foreign key support is active
+            self.cursor.execute('PRAGMA foreign_keys = ON')
+            # explicit cleanup for tables that reference immatriculation
+            linked_tables = [
+                'heures_vol', 'bilan', 'travaux', 'temps_vie',
+                'service_bulletins', 'moteurs', 'helices',
+                'documents', 'directive', 'recapitulatifs'
+            ]
+            for table in linked_tables:
+                try:
+                    self.cursor.execute(f'DELETE FROM {table} WHERE immatriculation=?', (immat,))
+                except Exception:
+                    # ignore if table does not exist yet
+                    pass
             self.cursor.execute('DELETE FROM aircrafts WHERE immatriculation=?', (immat,))
             self.conn.commit()
         except Exception as e:

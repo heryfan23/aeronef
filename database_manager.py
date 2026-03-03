@@ -22,6 +22,8 @@ class DatabaseManager:
         try:
             self.conn = sqlite3.connect(self.db_path)
             self.cursor = self.conn.cursor()
+            # enforce fk behavior globally
+            self.cursor.execute('PRAGMA foreign_keys = ON')
             self._create_tables_if_not_exist()
             print("✓ Base de données initialisée avec succès")
         except Exception as e:

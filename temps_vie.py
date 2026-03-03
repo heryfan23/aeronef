@@ -256,6 +256,7 @@ class Temps_vie(QFrame):
             self.db_path = os.path.join(os.path.dirname(__file__), 'aviation.db')
             self.conn = sqlite3.connect(self.db_path)
             self.cursor = self.conn.cursor()
+            self.cursor.execute('PRAGMA foreign_keys = ON')
             self.cursor.execute('''
                 CREATE TABLE IF NOT EXISTS temps_vie (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -277,9 +278,9 @@ class Temps_vie(QFrame):
                     nom_equipements TEXT,
                     date_inst_equipements TEXT,
                     date_calibration TEXT,
-                    FOREIGN KEY (immatriculation) REFERENCES aircrafts(immatriculation)
+                    FOREIGN KEY (immatriculation) REFERENCES aircrafts(immatriculation) ON DELETE CASCADE
                 )
-            ''')
+            ''' )
             self.conn.commit()
             # Vérifier et ajouter les colonnes manquantes
             self._add_missing_columns()

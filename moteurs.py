@@ -253,6 +253,7 @@ class Moteurs(QFrame):
             self.db_path = os.path.join(os.path.dirname(__file__), 'aviation.db')
             self.conn = sqlite3.connect(self.db_path)
             self.cursor = self.conn.cursor()
+            self.cursor.execute('PRAGMA foreign_keys = ON')
             # ensure table has new columns for hours and cycles
             self.cursor.execute('''
                 CREATE TABLE IF NOT EXISTS moteurs (
@@ -273,9 +274,9 @@ class Moteurs(QFrame):
                     date_revision TEXT,
                     pot_restant TEXT,
                     pot_restant_cycles INTEGER,
-                    FOREIGN KEY (immatriculation) REFERENCES aircrafts(immatriculation)
+                    FOREIGN KEY (immatriculation) REFERENCES aircrafts(immatriculation) ON DELETE CASCADE
                 )
-            ''')
+            ''' )
             # add missing columns if upgrading existing database
             self.cursor.execute("PRAGMA table_info(moteurs)")
             existing = [c[1] for c in self.cursor.fetchall()]

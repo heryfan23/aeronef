@@ -251,7 +251,7 @@ class Helices(QFrame):
         self.frame_helices.hide()
         # calc details label
         self.calc_details = QLabel("", self.frame_helices)
-        self.calc_details.setGeometry(500, 410, 400, 60)
+        self.calc_details.setGeometry(10, 420, 680, 50)
         self.calc_details.setStyleSheet("color: black; font-size:12px; background-color: none;")
         self.calc_details.setWordWrap(True)
         self.compute_all()
@@ -261,6 +261,7 @@ class Helices(QFrame):
             self.db_path = os.path.join(os.path.dirname(__file__), 'aviation.db')
             self.conn = sqlite3.connect(self.db_path)
             self.cursor = self.conn.cursor()
+            self.cursor.execute('PRAGMA foreign_keys = ON')
             self.cursor.execute('''
                 CREATE TABLE IF NOT EXISTS helices (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -280,9 +281,9 @@ class Helices(QFrame):
                     date_revision TEXT,
                     pot_restant TEXT,
                     pot_restant_cycles INTEGER,
-                    FOREIGN KEY (immatriculation) REFERENCES aircrafts(immatriculation)
+                    FOREIGN KEY (immatriculation) REFERENCES aircrafts(immatriculation) ON DELETE CASCADE
                 )
-            ''')
+            ''' )
             self.conn.commit()
             # add missing columns if upgrading existing database
             self.cursor.execute("PRAGMA table_info(helices)")
@@ -320,6 +321,11 @@ class Helices(QFrame):
         self.load_immatriculations()
         self.load_helices()
         self.selected_rows = []
+        
+        # Flag pour mode édition
+        self.edit_mode = False
+        self.current_edit_immat = None
+        self.current_edit_date_rev = None
 
     def load_immatriculations(self):
         """Charge tous les matricules depuis la table aircrafts"""
@@ -498,7 +504,7 @@ class Helices(QFrame):
             pass
     
     def save_helice(self):
-        """Sauvegarde les donnees de la helice dans la base de donnees"""
+        """Sauvegarde ou met à jour les donnees de la helice"""
         immat = self.immatriculation_input.currentText().strip()
         marque = self.models.text().strip()
         numero_serie = self.numero_serie.text().strip()
@@ -553,17 +559,31 @@ class Helices(QFrame):
             return
         
         try:
-            self.cursor.execute(
-                'INSERT INTO helices (immatriculation, marque, numero_serie, tsn_hours, tsn_cycles, tso_hours, tso_cycles, '
-                'date_installation, install_hours, install_cycles, pot_months, pot_hours, pot_cycles, '
-                'date_revision, pot_restant, pot_restant_cycles) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                (immat, marque, numero_serie, tsn_hours, tsn_cycles, tso_hours, tso_cycles,
-                 date_inst, inst_hours, inst_cycles, pot_months, pot_hours, pot_cycles,
-                 date_rev, pot_restant, pot_restant_cycles)
-            )
+            if self.edit_mode:
+                # Mode édition: UPDATE
+                self.cursor.execute(
+                    'UPDATE helices SET marque=?, numero_serie=?, tsn_hours=?, tsn_cycles=?, tso_hours=?, tso_cycles=?, '
+                    'date_installation=?, install_hours=?, install_cycles=?, pot_months=?, pot_hours=?, pot_cycles=?, '
+                    'date_revision=?, pot_restant=?, pot_restant_cycles=? '
+                    'WHERE immatriculation=? AND date_revision=?',
+                    (marque, numero_serie, tsn_hours, tsn_cycles, tso_hours, tso_cycles,
+                     date_inst, inst_hours, inst_cycles, pot_months, pot_hours, pot_cycles,
+                     date_rev, pot_restant, pot_restant_cycles,
+                     self.current_edit_immat, self.current_edit_date_rev)
+                )
+            else:
+                # Mode création: INSERT
+                self.cursor.execute(
+                    'INSERT INTO helices (immatriculation, marque, numero_serie, tsn_hours, tsn_cycles, tso_hours, tso_cycles, '
+                    'date_installation, install_hours, install_cycles, pot_months, pot_hours, pot_cycles, '
+                    'date_revision, pot_restant, pot_restant_cycles) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    (immat, marque, numero_serie, tsn_hours, tsn_cycles, tso_hours, tso_cycles,
+                     date_inst, inst_hours, inst_cycles, pot_months, pot_hours, pot_cycles,
+                     date_rev, pot_restant, pot_restant_cycles)
+                )
             self.conn.commit()
         except Exception as e:
-            print('Erreur insertion DB:', e)
+            print('Erreur sauvegarde DB:', e)
             msg = QMessageBox(self)
             msg.setIcon(QMessageBox.Icon.Critical)
             msg.setWindowTitle("Erreur")
@@ -573,21 +593,7 @@ class Helices(QFrame):
             return
         
         # Nettoyer les champs
-        self.models.clear()
-        self.numero_serie.clear()
-        self.tsn_hours.clear()
-        self.tsn_cycles.clear()
-        self.tso_hours.clear()
-        self.tso_cycles.clear()
-        self.date_installation.setDate(QDate.currentDate())
-        self.install_hours.clear()
-        self.install_cycles.clear()
-        self.pot_months.clear()
-        self.pot_hours.clear()
-        self.pot_cycles.clear()
-        self.dates_revision.setDate(QDate.currentDate())
-        self.pot_restant.clear()
-        self.pot_restant_cycles.clear()
+        self.reset_form()
         
         # Recharger le tableau
         self.load_helices()
@@ -716,81 +722,21 @@ class Helices(QFrame):
         self.pot_restant.setText(pot_restant)
         self.pot_restant_cycles.setText(pot_restant_cycles)
         
-        # Changer le titre et le comportement du formulaire
+        # Activer le mode édition
+        self.edit_mode = True
+        self.current_edit_immat = immat
+        self.current_edit_date_rev = date_rev
+        
+        # Changer le titre du bouton
         self.enregistrer.setText("Mettre a jour")
-        self.enregistrer.disconnect()
-        self.enregistrer.clicked.connect(lambda: self.update_helice(immat, date_rev))
+        
         # Recompute derived fields based on loaded values
         self.compute_all()
 
         self.tableau_affichage.setVisible(False)
         self.frame_helices.show()
     
-    def update_helice(self, immat, date_rev_original):
-        marque = self.models.text().strip()
-        numero_serie = self.numero_serie.text().strip()
-        tsn_hours = self.tsn_hours.text().strip()
-        tsn_cycles_text = self.tsn_cycles.text().strip()
-        try:
-            tsn_cycles = int(tsn_cycles_text) if tsn_cycles_text else None
-        except ValueError:
-            tsn_cycles = None
-        tso_hours = self.tso_hours.text().strip()
-        tso_cycles_text = self.tso_cycles.text().strip()
-        try:
-            tso_cycles = int(tso_cycles_text) if tso_cycles_text else None
-        except ValueError:
-            tso_cycles = None
-        # installation
-        date_inst = self.date_installation.date().toString("yyyy-MM-dd")
-        inst_hours = self.install_hours.text().strip()
-        inst_cycles_text = self.install_cycles.text().strip()
-        try:
-            inst_cycles = int(inst_cycles_text) if inst_cycles_text else None
-        except ValueError:
-            inst_cycles = None
-        # potentiel
-        pot_months_text = self.pot_months.text().strip()
-        try:
-            pot_months = int(pot_months_text) if pot_months_text else None
-        except ValueError:
-            pot_months = None
-        pot_hours = self.pot_hours.text().strip()
-        pot_cycles_text = self.pot_cycles.text().strip()
-        try:
-            pot_cycles = int(pot_cycles_text) if pot_cycles_text else None
-        except ValueError:
-            pot_cycles = None
-        # prochaines revision
-        date_rev = self.dates_revision.date().toString("yyyy-MM-dd")
-        pot_restant = self.pot_restant.text().strip()
-        pot_restant_cycles_text = self.pot_restant_cycles.text().strip()
-        try:
-            pot_restant_cycles = int(pot_restant_cycles_text) if pot_restant_cycles_text else None
-        except ValueError:
-            pot_restant_cycles = None
-        
-        try:
-            self.cursor.execute(
-                'UPDATE helices SET marque=?, numero_serie=?, tsn_hours=?, tsn_cycles=?, tso_hours=?, tso_cycles=?, '
-                'date_installation=?, install_hours=?, install_cycles=?, pot_months=?, pot_hours=?, pot_cycles=?, '
-                'date_revision=?, pot_restant=?, pot_restant_cycles=? '
-                'WHERE immatriculation=? AND date_revision=?',
-                (marque, numero_serie, tsn_hours, tsn_cycles, tso_hours, tso_cycles,
-                 date_inst, inst_hours, inst_cycles, pot_months, pot_hours, pot_cycles,
-                 date_rev, pot_restant, pot_restant_cycles,
-                 immat, date_rev_original)
-            )
-            self.conn.commit()
-        except Exception as e:
-            print('Erreur mise a jour DB:', e)
-            return
-        
-        # Reinitialiser le formulaire
-        self.reset_form()
-        self.load_helices()
-        self.tableau_affichage.setVisible(True)
-        self.frame_helices.hide()
+
     
     def supprimer_helice(self, row, immat):
         # Recuperer l'ID stocke dans les donnees de l'item
@@ -860,8 +806,10 @@ class Helices(QFrame):
         self.pot_restant.clear()
         self.pot_restant_cycles.clear()
         self.enregistrer.setText("Enregistrer")
-        self.enregistrer.disconnect()
-        self.enregistrer.clicked.connect(self.save_helice)
+        # Désactiver le mode édition
+        self.edit_mode = False
+        self.current_edit_immat = None
+        self.current_edit_date_rev = None
         
     def ajouter_helices(self):
         self.reset_form()

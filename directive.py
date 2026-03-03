@@ -200,6 +200,7 @@ class Directives(QFrame):
             self.db_path = os.path.join(os.path.dirname(__file__), 'aviation.db')
             self.conn = sqlite3.connect(self.db_path)
             self.cursor = self.conn.cursor()
+            self.cursor.execute('PRAGMA foreign_keys = ON')
             self.cursor.execute('''
                 CREATE TABLE IF NOT EXISTS directives (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -214,9 +215,9 @@ class Directives(QFrame):
                     heures_cycles TEXT,
                     prochaine_echeance TEXT,
                     methode_conformite TEXT,
-                    FOREIGN KEY (immatriculation) REFERENCES aircrafts(immatriculation)
+                    FOREIGN KEY (immatriculation) REFERENCES aircrafts(immatriculation) ON DELETE CASCADE
                 )
-            ''')
+            ''' )
             self.conn.commit()
             # migrate existing schema by adding new columns if they don't exist
             try:
@@ -239,6 +240,10 @@ class Directives(QFrame):
         self.load_immatriculations()
         self.load_directives()
         self.selected_rows = []
+        
+        # Flag pour mode édition
+        self.edit_mode = False
+        self.current_edit_immat = None
         
     def load_immatriculations(self):
         """Charge tous les matricules depuis la table aircrafts"""
@@ -276,7 +281,7 @@ class Directives(QFrame):
                 self.tableau_affichage.setItem(idx, col, item)
     
     def save_directive(self):
-        """Sauvegarde les donnees de la directive dans la base de donnees"""
+        """Sauvegarde ou met à jour les donnees de la directive"""
         immat = self.immatriculation_input.currentText().strip()
         references = self.references_input.text().strip()
         titre = self.titre_input.text().strip()
@@ -286,7 +291,7 @@ class Directives(QFrame):
         date_realisation = self.date_realisation_input.date().toString("yyyy-MM-dd")
         date_applications = self.date_applications_input.date().toString("yyyy-MM-dd")
         heures_cycles = self.heurs_input.text().strip()
-        prochaine_echeance = self.prochain_input.text().strip()
+        prochaine_echeance = self.prochain_input.date().toString("yyyy-MM-dd")
         methode_conformite = self.methodes_input.date().toString("yyyy-MM-dd")
         
         if not immat:
@@ -299,13 +304,21 @@ class Directives(QFrame):
             return
         
         try:
-            self.cursor.execute(
-                'INSERT INTO directives (immatriculation, `references`, titre, statut, etat, autorite, date_realisation, date_applications, heures_cycles, prochaine_echeance, methode_conformite) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                (immat, references, titre, statut, etat, autorite, date_realisation, date_applications, heures_cycles, prochaine_echeance, methode_conformite)
-            )
+            if self.edit_mode:
+                # Mode édition: UPDATE
+                self.cursor.execute(
+                    'UPDATE directives SET `references`=?, titre=?, statut=?, etat=?, autorite=?, date_realisation=?, date_applications=?, heures_cycles=?, prochaine_echeance=?, methode_conformite=? WHERE immatriculation=?',
+                    (references, titre, statut, etat, autorite, date_realisation, date_applications, heures_cycles, prochaine_echeance, methode_conformite, self.current_edit_immat)
+                )
+            else:
+                # Mode création: INSERT
+                self.cursor.execute(
+                    'INSERT INTO directives (immatriculation, `references`, titre, statut, etat, autorite, date_realisation, date_applications, heures_cycles, prochaine_echeance, methode_conformite) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    (immat, references, titre, statut, etat, autorite, date_realisation, date_applications, heures_cycles, prochaine_echeance, methode_conformite)
+                )
             self.conn.commit()
         except Exception as e:
-            print('Erreur insertion DB:', e)
+            print('Erreur sauvegarde DB:', e)
             msg = QMessageBox(self)
             msg.setIcon(QMessageBox.Icon.Critical)
             msg.setWindowTitle("Erreur")
@@ -432,44 +445,20 @@ class Directives(QFrame):
         self.date_realisation_input.setDate(QDate.fromString(date_realisation, "yyyy-MM-dd"))
         self.date_applications_input.setDate(QDate.fromString(date_applications, "yyyy-MM-dd"))
         self.heurs_input.setText(heures_cycles)
-        self.prochain_input.setText(prochaine_echeance)
+        self.prochain_input.setDate(QDate.fromString(prochaine_echeance, "yyyy-MM-dd"))
         self.methodes_input.setDate(QDate.fromString(methode_conformite, "yyyy-MM-dd"))
         
-        # Changer le titre et le comportement du formulaire
+        # Activer le mode édition
+        self.edit_mode = True
+        self.current_edit_immat = immat
+        
+        # Changer le titre du bouton
         self.enregistrer.setText("Mettre a jour")
-        self.enregistrer.disconnect()
-        self.enregistrer.clicked.connect(lambda: self.update_directive(immat))
         
         self.tableau_affichage.setVisible(False)
         self.frame_directives.show()
     
-    def update_directive(self, immat):
-        references = self.references_input.text().strip()
-        titre = self.titre_input.text().strip()
-        statut = self.statut_input.currentText().strip()
-        etat = self.etat_input.currentText().strip()
-        autorite = self.autorite_input.currentText().strip()
-        date_realisation = self.date_realisation_input.date().toString("yyyy-MM-dd")
-        date_applications = self.date_applications_input.date().toString("yyyy-MM-dd")
-        heures_cycles = self.heurs_input.text().strip()
-        prochaine_echeance = self.prochain_input.text().strip()
-        methode_conformite = self.methodes_input.date().toString("yyyy-MM-dd")
-        
-        try:
-            self.cursor.execute(
-                'UPDATE directives SET `references`=?, titre=?, statut=?, etat=?, autorite=?, date_realisation=?, date_applications=?, heures_cycles=?, prochaine_echeance=?, methode_conformite=? WHERE immatriculation=?',
-                (references, titre, statut, etat, autorite, date_realisation, date_applications, heures_cycles, prochaine_echeance, methode_conformite, immat)
-            )
-            self.conn.commit()
-        except Exception as e:
-            print('Erreur mise a jour DB:', e)
-            return
-        
-        # Reinitialiser le formulaire
-        self.reset_form()
-        self.load_directives()
-        self.tableau_affichage.setVisible(True)
-        self.frame_directives.hide()
+
     
     def supprimer_directive(self, row, immat):
         # Recuperer l'ID stocke dans les donnees de l'item
@@ -531,11 +520,12 @@ class Directives(QFrame):
         self.date_realisation_input.setDate(QDate.currentDate())
         self.date_applications_input.setDate(QDate.currentDate())
         self.heurs_input.clear()
-        self.prochain_input.clear()
+        self.prochain_input.setDate(QDate.currentDate())
         self.methodes_input.setDate(QDate.currentDate())
         self.enregistrer.setText("Enregistrer")
-        self.enregistrer.disconnect()
-        self.enregistrer.clicked.connect(self.save_directive)
+        # Désactiver le mode édition
+        self.edit_mode = False
+        self.current_edit_immat = None
         
     def fonction_directive(self):
         self.reset_form()

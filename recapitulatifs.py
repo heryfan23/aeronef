@@ -156,6 +156,8 @@ class Recapitulatifs(QFrame):
             self.db_path = os.path.join(os.path.dirname(__file__), 'aviation.db')
             self.conn = sqlite3.connect(self.db_path)
             self.cursor = self.conn.cursor()
+            # enable fk support so that cascading works
+            self.cursor.execute('PRAGMA foreign_keys = ON')
             self.cursor.execute('''
                 CREATE TABLE IF NOT EXISTS recapitulatifs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -163,9 +165,9 @@ class Recapitulatifs(QFrame):
                     types TEXT,
                     description TEXT,
                     certifications TEXT,
-                    FOREIGN KEY (immatriculation) REFERENCES aircrafts(immatriculation)
+                    FOREIGN KEY (immatriculation) REFERENCES aircrafts(immatriculation) ON DELETE CASCADE
                 )
-            ''')
+            ''' )
             self.conn.commit()
             # Migration: ensure certifications column exists (for older DBs)
             try:
