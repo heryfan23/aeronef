@@ -560,9 +560,20 @@ class Recapitulatifs(QFrame):
                 margin: 3px;
             }
         """)
-        layout = QVBoxLayout()
+
+        # create a scrollable area to handle large amounts of data
+        main_widget = QWidget()
+        layout = QVBoxLayout(main_widget)
         layout.setSpacing(10)
         layout.setContentsMargins(15, 15, 15, 15)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(main_widget)
+
+        dialog_layout = QVBoxLayout()
+        dialog_layout.addWidget(scroll)
+        dialog.setLayout(dialog_layout)
 
         # Titre principal
         title_label = QLabel(f"<h2 style='color: #1976d2; margin-bottom: 10px;'>Détails de l'aéronef: {immat}</h2>")
@@ -593,6 +604,43 @@ class Recapitulatifs(QFrame):
             content_label.setWordWrap(True)
             content_label.setMinimumHeight(60)
             layout.addWidget(content_label)
+
+        # retrieve any recapitulatifs records for this aircraft and show them
+        try:
+            self.cursor.execute(
+                'SELECT types, certifications, num_ref_ata, comp_description, date_proc_rev, pot_restant, pot_restant_cycles '
+                'FROM recapitulatifs WHERE immatriculation=?',
+                (immat,)
+            )
+            rec_rows = self.cursor.fetchall()
+            if rec_rows:
+                recap_header = QLabel(f"<b style='color: #1565c0; font-size: 14px;'>Récapitulatif(s) enregistrés :</b>")
+                recap_header.setStyleSheet("margin-top: 10px; margin-bottom: 2px;")
+                layout.addWidget(recap_header)
+                for rec in rec_rows:
+                    rec_text = (
+                        f"Type: {rec[0]}\n"
+                        f"Certifications: {rec[1]}\n"
+                        f"Num ref ATA: {rec[2]}\n"
+                        f"Description: {rec[3]}\n"
+                        f"Date Proc Rev: {rec[4]}\n"
+                        f"Pot restant: {rec[5]} h\n"
+                        f"Pot cycles: {rec[6]}"
+                    )
+                    rec_label = QLabel(rec_text)
+                    rec_label.setStyleSheet("""
+                        background-color: white;
+                        border: 1px solid #ddd;
+                        border-radius: 4px;
+                        padding: 8px;
+                        color: #333333;
+                        font-family: 'Segoe UI', Arial, sans-serif;
+                    """)
+                    rec_label.setWordWrap(True)
+                    rec_label.setMinimumHeight(60)
+                    layout.addWidget(rec_label)
+        except Exception:
+            pass
 
         # attempt graph with pot restant if available
         try:
