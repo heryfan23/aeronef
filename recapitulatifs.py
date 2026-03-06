@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QCompleter, QLineEdit, QWidget, QLabel, QPushButton,QFrame,QTableWidget, QTableWidgetItem, QComboBox, QMessageBox, QAbstractItemView, QMenu, QDialog, QVBoxLayout, QHBoxLayout
+from PyQt6.QtWidgets import QCompleter, QLineEdit, QWidget, QLabel, QPushButton,QFrame,QTableWidget, QTableWidgetItem, QComboBox, QMessageBox, QAbstractItemView, QMenu, QDialog, QVBoxLayout, QHBoxLayout, QScrollArea
 from PyQt6.QtCore import QStringListModel, Qt
 from PyQt6.QtGui import QColor
 import sqlite3
@@ -17,56 +17,121 @@ class Recapitulatifs(QFrame):
         self.setStyleSheet("background-color: #2d2d69;border-radius:10px")
         
         
-        self.titre = QLabel("Recapitulatifs des echeances", self)
+        self.titre = QLabel("📊 Récapitulatifs des Échéances", self)
         self.titre.setGeometry(20, 50, 800, 50)
-        self.titre.setStyleSheet("font-size: 20px;color:white;background-color:none")
+        self.titre.setStyleSheet("font-size: 22px;color:white;background-color:none;font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.5);")
         
         self.hr_1 = QLabel(self)
         self.hr_1.setGeometry(20,60,980,3)
         self.hr_1.setStyleSheet("background-color:white")
         
         # filtre immatriculation
-        self.filter_label = QLabel("Filtrer immatriculation :", self)
-        self.filter_label.setGeometry(440, 70, 160, 30)
-        self.filter_label.setStyleSheet("color:white; font-size:14px; background-color:None")
+        self.filter_label = QLabel("🔍 Filtrer immatriculation :", self)
+        self.filter_label.setGeometry(440, 70, 180, 30)
+        self.filter_label.setStyleSheet("color:white; font-size:14px; background-color:None; font-weight: bold;")
         self.filter_input = QLineEdit(self)
-        self.filter_input.setGeometry(610, 70, 200, 30)
-        self.filter_input.setStyleSheet("background-color: white; border:1px solid black; padding:5px; font-size:14px")
+        self.filter_input.setGeometry(620, 70, 200, 30)
+        self.filter_input.setStyleSheet("""
+            QLineEdit {
+                background-color: white;
+                border: 2px solid #1976d2;
+                border-radius: 6px;
+                padding: 5px 10px;
+                font-size: 14px;
+                color: #333;
+            }
+            QLineEdit:focus {
+                border-color: #1565c0;
+                background-color: #f0f8ff;
+            }
+        """)
+        self.filter_input.setPlaceholderText("Tapez pour filtrer...")
         self.filter_input.textChanged.connect(self.apply_filter)
         self.filter_completer = QCompleter()
         self.filter_input.setCompleter(self.filter_completer)
         
-        # Faire une tableau
-        self.tableau_affichage = QTableWidget(20,4,self)
+        # tableau récapitulatif détaillé (lecture seule) : colonnes structurées
+        self.tableau_affichage = QTableWidget(20,8,self)
         self.tableau_affichage.setGeometry(10,110,1000,400)
-        self.tableau_affichage.setHorizontalHeaderLabels(["Immatriculation","Types","Description","Certifications"])
-        self.tableau_affichage.setColumnWidth(0,150)
-        self.tableau_affichage.setColumnWidth(1,200)
-        self.tableau_affichage.setColumnWidth(2,400)
-        self.tableau_affichage.setColumnWidth(3,250)
-        self.tableau_affichage.setStyleSheet("background-color:white;color:black")
+        self.tableau_affichage.setHorizontalHeaderLabels([
+            "Immatriculation",
+            "Infos Avion",
+            "Dernier Vol",
+            "Moteurs",
+            "Hélices",
+            "Temps Vie",
+            "Documents",
+            "Comptes"
+        ])
+        self.tableau_affichage.setColumnWidth(0,120)
+        self.tableau_affichage.setColumnWidth(1,150)
+        self.tableau_affichage.setColumnWidth(2,120)
+        self.tableau_affichage.setColumnWidth(3,150)
+        self.tableau_affichage.setColumnWidth(4,150)
+        self.tableau_affichage.setColumnWidth(5,120)
+        self.tableau_affichage.setColumnWidth(6,120)
+        self.tableau_affichage.setColumnWidth(7,120)
+        # Style amélioré pour le tableau
+        self.tableau_affichage.setStyleSheet("""
+            QTableWidget {
+                background-color: white;
+                color: black;
+                gridline-color: #ddd;
+                selection-background-color: #e3f2fd;
+                selection-color: black;
+                alternate-background-color: #f9f9f9;
+            }
+            QHeaderView::section {
+                background-color: #1976d2;
+                color: white;
+                padding: 8px;
+                border: 1px solid #1565c0;
+                font-weight: bold;
+                font-size: 12px;
+            }
+            QTableWidget::item {
+                padding: 5px;
+                border-bottom: 1px solid #eee;
+            }
+            QTableWidget::item:selected {
+                background-color: #2196f3;
+                color: white;
+            }
+        """)
+        self.tableau_affichage.setAlternatingRowColors(True)
         self.tableau_affichage.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.tableau_affichage.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tableau_affichage.itemSelectionChanged.connect(self.on_row_selected)
-        
+        self.tableau_affichage.cellDoubleClicked.connect(self.on_cell_double_clicked)
         self.tableau_affichage.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         
         
+        # Recapitulatif est lecture seule: on masque les commandes de saisie
         self.btn_ajout_travaux = QPushButton("Nouveaux",self)
-        self.btn_ajout_travaux.setGeometry(10,10,190,40)
-        self.btn_ajout_travaux.setStyleSheet("background-color:blue;font-size:15px;color:white;font-weight:bold")
-        self.btn_ajout_travaux.clicked.connect(self.ajouter_recapitulatifs)
+        self.btn_ajout_travaux.hide()
         
-        
-        self.btn_voir_listes = QPushButton("Voir Listes",self)
+        self.btn_voir_listes = QPushButton("🔄 Actualiser",self)
         self.btn_voir_listes.setGeometry(230,10,190,40)
-        self.btn_voir_listes.setStyleSheet("background-color:blue;font-size:15px;color:white;font-weight:bold")
+        self.btn_voir_listes.setStyleSheet("""
+            QPushButton {
+                background-color: #4caf50;
+                color: white;
+                font-size: 15px;
+                font-weight: bold;
+                border-radius: 8px;
+                border: none;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+            QPushButton:pressed {
+                background-color: #3d8b40;
+            }
+        """)
         self.btn_voir_listes.clicked.connect(self.voir_listes_recaitulatifs)
+        self.btn_voir_listes.setCursor(Qt.CursorShape.PointingHandCursor)
         
         self.btn_action = QPushButton("Action",self)
-        self.btn_action.setGeometry(450,10,190,40)
-        self.btn_action.setStyleSheet("background-color:green;font-size:15px;color:white;font-weight:bold")
-        self.btn_action.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_action.hide()
         self.btn_action.clicked.connect(self.show_action_menu)
         
@@ -176,23 +241,34 @@ class Recapitulatifs(QFrame):
                     types TEXT,
                     description TEXT,
                     certifications TEXT,
+                    num_ref_ata TEXT,
+                    comp_description TEXT,
+                    date_proc_rev TEXT,
+                    pot_restant TEXT,
+                    pot_restant_cycles TEXT,
                     FOREIGN KEY (immatriculation) REFERENCES aircrafts(immatriculation) ON DELETE CASCADE
                 )
             ''' )
             self.conn.commit()
-            # Migration: ensure certifications column exists (for older DBs)
+            # Migration: ensure newer columns exist for older DBs
             try:
                 self.cursor.execute("PRAGMA table_info(recapitulatifs)")
                 cols = [r[1] for r in self.cursor.fetchall()]
-                if 'certifications' not in cols:
-                    self.cursor.execute('ALTER TABLE recapitulatifs ADD COLUMN certifications TEXT')
+                missing = []
+                for col in ['certifications','num_ref_ata','comp_description','date_proc_rev','pot_restant','pot_restant_cycles']:
+                    if col not in cols:
+                        missing.append(col)
+                for col in missing:
+                    # all added as TEXT
+                    self.cursor.execute(f'ALTER TABLE recapitulatifs ADD COLUMN {col} TEXT')
+                if missing:
                     self.conn.commit()
             except Exception:
                 pass
         except Exception as e:
             print('Erreur initialisation DB:', e)
         
-        # Charger les matricules et les recapitulatifs
+        # Charger les matricules et construire le tableau agrégé
         self.load_immatriculations()
         self.load_recapitulatifs()
         self.selected_rows = []
@@ -247,35 +323,153 @@ class Recapitulatifs(QFrame):
             self.pot_restant_cycles_input.clear()
     
     def load_recapitulatifs(self):
-        """Charge les recapitulatifs depuis la base de donnees"""
+        """Construire un récapitulatif global en agrégeant les autres tables."""
         try:
-            self.cursor.execute('SELECT id, immatriculation, types, description, certifications FROM recapitulatifs ORDER BY immatriculation DESC')
-            rows = self.cursor.fetchall()
+            self.cursor.execute('SELECT immatriculation FROM aircrafts ORDER BY immatriculation')
+            immats = [r[0] for r in self.cursor.fetchall()]
         except Exception as e:
-            print('Erreur lecture DB:', e)
-            rows = []
-        
-        # Ajuster le nombre de lignes du tableau
-        row_count = max(20, len(rows))
+            print('Erreur lecture immatriculations pour récapitulatifs:', e)
+            immats = []
+
+        # prepare storage for details
+        self.full_data = {}
+        row_count = max(20, len(immats))
         self.tableau_affichage.setRowCount(row_count)
-        
-        # Vider le contenu existant
         self.tableau_affichage.clearContents()
-        
-        # Remplir avec les donnees (en sautant la colonne ID)
-        for idx, row in enumerate(rows):
-            for col, value in enumerate(row[1:]):  # Ignorer l'ID (index 0)
-                item = QTableWidgetItem(str(value))
-                # Stocker l'ID dans les donnees de l'item
-                item.setData(Qt.ItemDataRole.UserRole, row[0])
+
+        for idx, immat in enumerate(immats):
+            self.full_data[idx] = immat
+            data = self.build_detailed_data(immat)
+            self.tableau_affichage.setItem(idx, 0, QTableWidgetItem(immat))
+            for col in range(1, 8):
+                item = QTableWidgetItem(data[col-1])
+                item.setData(Qt.ItemDataRole.UserRole, immat)
                 self.tableau_affichage.setItem(idx, col, item)
-    
+
+    def build_detailed_data(self, immat: str) -> list:
+        """Rassemble des informations détaillées de différentes tables pour une immatriculation, retourne une liste pour chaque colonne."""
+        data = ["", "", "", "", "", "", ""]  # 7 colonnes de données
+
+        try:
+            # Colonne 1: Infos Avion
+            self.cursor.execute(
+                'SELECT marque, serie, heures_total, cycles_total '
+                'FROM aircrafts WHERE immatriculation=?',
+                (immat,)
+            )
+            row = self.cursor.fetchone()
+            if row:
+                data[0] = f"Marque: {row[0]}\nSérie: {row[1]}\nHeures: {row[2]}\nCycles: {row[3]}"
+        except Exception:
+            pass
+
+        try:
+            # Colonne 2: Dernier Vol
+            self.cursor.execute(
+                'SELECT date_vol, temps_vol, cycles FROM heures_vol '
+                'WHERE immatriculation=? ORDER BY date_vol DESC LIMIT 1',
+                (immat,)
+            )
+            row = self.cursor.fetchone()
+            if row:
+                data[1] = f"Date: {row[0]}\nHeures: {row[1]}\nCycles: {row[2]}"
+        except Exception:
+            pass
+
+        try:
+            # Colonne 3: Moteurs
+            self.cursor.execute(
+                'SELECT marque, numero_serie, pot_restant, pot_restant_cycles FROM moteurs '
+                'WHERE immatriculation=?',
+                (immat,)
+            )
+            motors = self.cursor.fetchall()
+            if motors:
+                motors_list = []
+                for m in motors:
+                    motors_list.append(f"{m[0]} N° série:{m[1]}\nPotentiel restant:\n{m[2]} heures\n{m[3]} cycles")
+                data[2] = "\n\n".join(motors_list)
+        except Exception:
+            pass
+
+        try:
+            # Colonne 4: Hélices
+            self.cursor.execute(
+                'SELECT marque, numero_serie, pot_restant, pot_restant_cycles FROM helices '
+                'WHERE immatriculation=?',
+                (immat,)
+            )
+            props = self.cursor.fetchall()
+            if props:
+                props_list = []
+                for p in props:
+                    props_list.append(f"{p[0]} N° série:{p[1]}\nPotentiel restant:\n{p[2]} heures\n{p[3]} cycles")
+                data[3] = "\n\n".join(props_list)
+        except Exception:
+            pass
+
+        try:
+            # Colonne 5: Temps de Vie
+            self.cursor.execute(
+                'SELECT pot_restant, pot_restant_cycles FROM temps_vie '
+                'WHERE immatriculation=? ORDER BY rowid DESC LIMIT 1',
+                (immat,)
+            )
+            row = self.cursor.fetchone()
+            if row:
+                data[4] = f"Potentiel restant:\n{row[0]} heures\n{row[1]} cycles"
+        except Exception:
+            pass
+
+        try:
+            # Colonne 6: Documents
+            self.cursor.execute(
+                'SELECT crs_date, crs_num FROM documents '
+                'WHERE immatriculation=? ORDER BY crs_date DESC LIMIT 1',
+                (immat,)
+            )
+            row = self.cursor.fetchone()
+            if row:
+                data[5] = f"CRS:\nDate: {row[0]}\nRef: {row[1]}"
+        except Exception:
+            pass
+
+        try:
+            # Colonne 7: Comptes
+            directives_cnt = self.cursor.execute('SELECT COUNT(*) FROM directives WHERE immatriculation=?', (immat,)).fetchone()[0]
+            travaux_cnt = self.cursor.execute('SELECT COUNT(*) FROM travaux WHERE immatriculation=?', (immat,)).fetchone()[0]
+            sb_cnt = self.cursor.execute('SELECT COUNT(*) FROM service_bulletins WHERE immatriculation=?', (immat,)).fetchone()[0]
+            data[6] = f"Directives: {directives_cnt}\nTravaux: {travaux_cnt}\nSBs: {sb_cnt}"
+        except Exception:
+            pass
+
+        return data
+
     def save_recapitulatifs(self):
         """Sauvegarde les donnees du recapitulatif dans la base de donnees"""
         immat = self.immatriculation_input.currentText().strip()
         types = self.types_.currentText().strip()
         description = self.comp_description_input.text().strip()
         certifications = self.certifications.text().strip()
+        num_ref = self.num_ref_ata_input.text().strip()
+        comp_desc = self.comp_description_input.text().strip()
+        date_proc = self.date_proc_rev_input.text().strip()
+        pot_rem = self.pot_restant_input.text().strip()
+        pot_rem_cycles = self.pot_restant_cycles_input.text().strip()
+
+        # Validate numeric fields if filled
+        for field, name in [(pot_rem,"Pot restant"),(pot_rem_cycles,"Pot restant Cycles")]:
+            if field:
+                try:
+                    float(field)
+                except ValueError:
+                    msg = QMessageBox(self)
+                    msg.setIcon(QMessageBox.Icon.Warning)
+                    msg.setWindowTitle("Erreur")
+                    msg.setText(f"Le champ '{name}' doit être un nombre.")
+                    msg.setStyleSheet("QMessageBox { background-color: #2d2d69; } QMessageBox QLabel { color: white; }")
+                    msg.exec()
+                    return
         
         if not immat:
             msg = QMessageBox(self)
@@ -288,8 +482,13 @@ class Recapitulatifs(QFrame):
         
         try:
             self.cursor.execute(
-                'INSERT INTO recapitulatifs (immatriculation, types, description, certifications) VALUES (?, ?, ?, ?)',
-                (immat, types, description, certifications)
+                '''INSERT INTO recapitulatifs (
+                        immatriculation, types, description, certifications,
+                        num_ref_ata, comp_description, date_proc_rev,
+                        pot_restant, pot_restant_cycles
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                (immat, types, description, certifications,
+                 num_ref, comp_desc, date_proc, pot_rem, pot_rem_cycles)
             )
             self.conn.commit()
         except Exception as e:
@@ -333,11 +532,128 @@ class Recapitulatifs(QFrame):
                         item.setBackground(QColor("white"))
                         item.setForeground(QColor("black"))
         
-        # Afficher le bouton Action si au moins une ligne est selectionnee
-        if len(set(idx.row() for idx in self.selected_rows)) > 0:
-            self.btn_action.show()
-        else:
-            self.btn_action.hide()
+        # no action button in summary view
+        self.btn_action.hide()
+
+    def on_cell_double_clicked(self, row, column):
+        """Show a detail dialog when a cell is double-clicked."""
+        immat = self.tableau_affichage.item(row,0).text() if self.tableau_affichage.item(row,0) else None
+        if immat:
+            self.show_details(row)
+
+    def show_details(self, row):
+        """Display a dialog with all available information for the given row and draw a graph if numeric data present."""
+        immat = self.full_data.get(row)
+        if not immat:
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Détails - {immat}")
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #f5f5f5;
+                border: 2px solid #1976d2;
+                border-radius: 8px;
+            }
+            QLabel {
+                color: #333333;
+                font-size: 13px;
+                margin: 3px;
+            }
+        """)
+        layout = QVBoxLayout()
+        layout.setSpacing(10)
+        layout.setContentsMargins(15, 15, 15, 15)
+
+        # Titre principal
+        title_label = QLabel(f"<h2 style='color: #1976d2; margin-bottom: 10px;'>Détails de l'aéronef: {immat}</h2>")
+        title_label.setStyleSheet("border-bottom: 2px solid #1976d2; padding-bottom: 5px;")
+        layout.addWidget(title_label)
+
+        # show detailed information in a structured way
+        detailed_data = self.build_detailed_data(immat)
+        column_headers = ["Infos Avion", "Dernier Vol", "Moteurs", "Hélices", "Temps Vie", "Documents", "Comptes"]
+
+        for i, header in enumerate(column_headers):
+            # Section header
+            section_label = QLabel(f"<b style='color: #1565c0; font-size: 14px;'>{header}:</b>")
+            section_label.setStyleSheet("margin-top: 10px; margin-bottom: 2px;")
+            layout.addWidget(section_label)
+
+            # Content
+            content_text = detailed_data[i] if detailed_data[i] else "Aucune donnée disponible"
+            content_label = QLabel(content_text)
+            content_label.setStyleSheet("""
+                background-color: white;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 8px;
+                color: #333333;
+                font-family: 'Segoe UI', Arial, sans-serif;
+            """)
+            content_label.setWordWrap(True)
+            content_label.setMinimumHeight(60)
+            layout.addWidget(content_label)
+
+        # attempt graph with pot restant if available
+        try:
+            # attempt to fetch numeric values again
+            self.cursor.execute('SELECT pot_restant, pot_restant_cycles FROM temps_vie WHERE immatriculation=? ORDER BY rowid DESC LIMIT 1', (immat,))
+            rowval = self.cursor.fetchone()
+            pr = float(rowval[0]) if rowval and rowval[0] else None
+            prc = float(rowval[1]) if rowval and rowval[1] else None
+        except Exception:
+            pr = prc = None
+        if pr is not None and prc is not None:
+            try:
+                from matplotlib.figure import Figure
+                from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+
+                fig = Figure(figsize=(5,3), facecolor='white')
+                ax = fig.add_subplot(111)
+                bars = ax.bar(['Pot restant (h)', 'Pot cycles'], [pr, prc], color=['#2196f3', '#ff9800'], alpha=0.8)
+                ax.set_ylabel('Valeur', fontsize=12, fontweight='bold')
+                ax.set_title('Potentiel restant', fontsize=14, fontweight='bold', color='#1976d2')
+                ax.grid(True, alpha=0.3)
+
+                # Add value labels on bars
+                for bar in bars:
+                    height = bar.get_height()
+                    ax.text(bar.get_x() + bar.get_width()/2., height + max(pr, prc)*0.02,
+                           f'{height:.1f}', ha='center', va='bottom', fontweight='bold')
+
+                canvas = FigureCanvas(fig)
+                canvas.setStyleSheet("border: 1px solid #ddd; border-radius: 4px;")
+                layout.addWidget(canvas)
+            except Exception as e:
+                print(f"Erreur graphique: {e}")
+                pass
+
+        # Bouton fermer stylisé
+        btn_close = QPushButton("Fermer")
+        btn_close.setStyleSheet("""
+            QPushButton {
+                background-color: #1976d2;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 10px 20px;
+                font-size: 14px;
+                font-weight: bold;
+                min-width: 100px;
+            }
+            QPushButton:hover {
+                background-color: #1565c0;
+            }
+            QPushButton:pressed {
+                background-color: #0d47a1;
+            }
+        """)
+        btn_close.clicked.connect(dialog.accept)
+        layout.addWidget(btn_close, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        dialog.setLayout(layout)
+        dialog.resize(600, 800)
+        dialog.exec()
     
     def show_action_menu(self):
         selected_rows = list(set(idx.row() for idx in self.tableau_affichage.selectedIndexes()))
@@ -398,15 +714,35 @@ class Recapitulatifs(QFrame):
     
     def modifier_recapitulatifs(self, row, immat):
         # Recuperer les donnees de la ligne avec verification
-        types = self.tableau_affichage.item(row, 1).text() if self.tableau_affichage.item(row, 1) else ""
-        description = self.tableau_affichage.item(row, 2).text() if self.tableau_affichage.item(row, 2) else ""
-        certifications = self.tableau_affichage.item(row, 3).text() if self.tableau_affichage.item(row, 3) else ""
+        # we have full_data stored earlier
+        full = self.full_data.get(row, None)
+        types = ""
+        description = ""
+        certifications = ""
+        num_ref = ""
+        comp_desc = ""
+        date_proc = ""
+        pot_rem = ""
+        pot_rem_cycles = ""
+        if full:
+            # row format: (id, immat, types, description, cert, num_ref, comp_desc, date_proc, pot_rem, pot_rem_cycles)
+            _, _, types, description, certifications, num_ref, comp_desc, date_proc, pot_rem, pot_rem_cycles = full
+            # store id for update later
+            self._editing_id = full[0]
         
         # Remplir les champs du formulaire
         self.immatriculation_input.setCurrentText(immat)
         self.types_.setCurrentText(types)
+        # description générale corresponds to "description" variable
         self.comp_description_input.setText(description)
         self.certifications.setText(certifications)
+        # nouveaux champs
+        self.num_ref_ata_input.setText(num_ref or "")
+        # comp_description_input is for component description
+        self.comp_description_input.setText(comp_desc or "")
+        self.date_proc_rev_input.setText(date_proc or "")
+        self.pot_restant_input.setText(pot_rem or "")
+        self.pot_restant_cycles_input.setText(pot_rem_cycles or "")
         
         # Changer le titre et le comportement du formulaire
         self.enregistrer.setText("Mettre a jour")
@@ -420,19 +756,52 @@ class Recapitulatifs(QFrame):
         types = self.types_.currentText().strip()
         description = self.comp_description_input.text().strip()
         certifications = self.certifications.text().strip()
-        
+        num_ref = self.num_ref_ata_input.text().strip()
+        comp_desc = self.comp_description_input.text().strip()
+        date_proc = self.date_proc_rev_input.text().strip()
+        pot_rem = self.pot_restant_input.text().strip()
+        pot_rem_cycles = self.pot_restant_cycles_input.text().strip()
+
         try:
-            self.cursor.execute(
-                'UPDATE recapitulatifs SET types=?, description=?, certifications=? WHERE immatriculation=?',
-                (types, description, certifications, immat)
-            )
+            # use the stored row id so we only update the selected record
+            row_id = getattr(self, '_editing_id', None)
+            if row_id is None:
+                # fallback to immatriculation update (older behaviour)
+                self.cursor.execute(
+                    '''UPDATE recapitulatifs SET 
+                            types=?, description=?, certifications=?,
+                            num_ref_ata=?, comp_description=?, date_proc_rev=?,
+                            pot_restant=?, pot_restant_cycles=?
+                       WHERE immatriculation=?''',
+                    (types, description, certifications,
+                     num_ref, comp_desc, date_proc,
+                     pot_rem, pot_rem_cycles, immat)
+                )
+            else:
+                self.cursor.execute(
+                    '''UPDATE recapitulatifs SET 
+                            types=?, description=?, certifications=?,
+                            num_ref_ata=?, comp_description=?, date_proc_rev=?,
+                            pot_restant=?, pot_restant_cycles=?
+                       WHERE id=?''',
+                    (types, description, certifications,
+                     num_ref, comp_desc, date_proc,
+                     pot_rem, pot_rem_cycles, row_id)
+                )
             self.conn.commit()
         except Exception as e:
             print('Erreur mise a jour DB:', e)
+            msg = QMessageBox(self)
+            msg.setIcon(QMessageBox.Icon.Critical)
+            msg.setWindowTitle("Erreur")
+            msg.setText(f"Erreur lors de la mise à jour: {str(e)}")
+            msg.setStyleSheet("QMessageBox { background-color: #2d2d69; } QMessageBox QLabel { color: white; }")
+            msg.exec()
             return
-        
         # Reinitialiser le formulaire
         self.reset_form()
+        # clear editing id
+        self._editing_id = None
         self.load_recapitulatifs()
         self.tableau_affichage.setVisible(True)
         self.frame_recapitulatifs.hide()
@@ -517,26 +886,18 @@ class Recapitulatifs(QFrame):
         self.enregistrer.clicked.connect(self.save_recapitulatifs)
         
     def ajouter_recapitulatifs(self):
+        """Affiche le formulaire de création en réinitialisant les champs."""
         self.reset_form()
         self.tableau_affichage.setVisible(False)
         self.frame_recapitulatifs.show()
-        
+        self.btn_action.hide()
+
     def voir_listes_recaitulatifs(self):
+        """Retourne à la vue tableau et recharge les données."""
         self.load_recapitulatifs()
         self.tableau_affichage.setVisible(True)
         self.frame_recapitulatifs.hide()
         self.btn_action.hide()
-        
-        self.frame_recapitulatifs.hide()
-        
-    def ajouter_recapitulatifs(self):
-        
-        self.tableau_affichage.setVisible(False)
-        self.frame_recapitulatifs.show()
-        
-    def voir_listes_recaitulatifs(self):
-        self.tableau_affichage.setVisible(True)
-        self.frame_recapitulatifs.hide()
     
     def apply_filter(self, text: str):
         """Masque les lignes dont l'immatriculation ne contient pas le texte donné."""
