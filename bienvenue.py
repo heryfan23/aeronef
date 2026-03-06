@@ -19,7 +19,7 @@ class Bienvenue(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Bienvenue")
-        self.setGeometry(0, 0, 1350, 700)
+        self.setGeometry(0, 0, 1290, 680)
         # self.setFixedSize(1350, 700)
         self.setStyleSheet("background-color: white;")
         
@@ -36,7 +36,7 @@ class Bienvenue(QWidget):
         self.titre.setStyleSheet("font-size: 20px;color:white;background-color:none")
         
         self.profil = QPushButton(self)
-        self.profil.setGeometry(1280,10,40,40)
+        self.profil.setGeometry(1200,10,40,40)
         self.profil.setIcon(QIcon("./images/icon_profile.svg"))
         self.profil.setIconSize(QSize(32, 32))
         self.profil.setStyleSheet('border-radius:5px;background-color:white;border:1px solid #333;')
@@ -224,17 +224,14 @@ class Bienvenue(QWidget):
         self.recapitulatifs.setCursor(Qt.CursorShape.PointingHandCursor)
         self.recapitulatifs.clicked.connect(self.show_recapitulatifs)
         
-        # alertes button moved to top bar
-        # (originally on the dashboard panel, now created below)
         
         # initiation des frames
         
         self.ajout_info = None
         self.heures_vol = None
-        # create alertes button in the violet navigation bar
+        # creation bouton alertes
         self.alertes_btn = QPushButton("Alertes \u0026 Maintenance", self)
-        # place it near the right side, before the profile icon
-        self.alertes_btn.setGeometry(980, 10, 260, 40)
+        self.alertes_btn.setGeometry(900, 10, 260, 40)
         self.alertes_btn.setStyleSheet("""
             QPushButton{
                 color: white;
@@ -261,11 +258,11 @@ class Bienvenue(QWidget):
         self.temps = None
         self.alertes_frame = None
         self.ajout_info = AjoutInfo(self)
-        self.ajout_info.setGeometry(300,70,1040,600)
+        self.ajout_info.setGeometry(260,70,1020,600)
         
         # Fenetre Profil
         self.profil_frame = QFrame(self)
-        self.profil_frame.setGeometry(1150,60,150,150)
+        self.profil_frame.setGeometry(1100,60,150,150)
         self.profil_frame.setStyleSheet("background-color:white;border:1px solid black;border-radius:10px;border:1px solid black")
         
         self.profil_label = QLabel("Profil", self.profil_frame)
@@ -273,7 +270,7 @@ class Bienvenue(QWidget):
         self.profil_label.setStyleSheet("font-size: 14px;color:black;background-color:none;border:none;padding-left:50px")
         
         
-        self.parametres = QPushButton("Paramètres", self.profil_frame)
+        self.parametres = QPushButton("Information", self.profil_frame)
         self.parametres.setGeometry(10,50,130,30)
         self.parametres.setStyleSheet("""
             QPushButton{
@@ -310,7 +307,7 @@ class Bienvenue(QWidget):
     def show_ajout_info(self):
         if self.ajout_info is None:
             self.ajout_info = AjoutInfo(self)
-            self.ajout_info.setGeometry(300,70,1040,600)
+            self.ajout_info.setGeometry(260,70,1020,600)
 
         if self.ajout_info.isVisible():
             self.ajout_info.hide()
@@ -346,10 +343,33 @@ class Bienvenue(QWidget):
                 pass
             
             
+    def refresh_all_immatriculations(self):
+        """Ask every child frame that has a combobox of immatriculations to reload its list.
+        This method is safe to call even if the frame has not been created yet.
+        """
+        for attr in [
+            'heures_vol', 'bilan', 'travaux_', 'temps',
+            'service_bulletins', 'recapitulatifs_',
+            'moteurs', 'g_helices', 'g_directives', 'documents_'
+        ]:
+            widget = getattr(self, attr, None)
+            if widget and hasattr(widget, 'load_immatriculations'):
+                try:
+                    widget.load_immatriculations()
+                except Exception:
+                    pass
+
     def show_heures_vol(self):
+        # always refresh the combobox just before showing the page
         if self.heures_vol is None:
             self.heures_vol = HeuresVol(self)
-            self.heures_vol.setGeometry(300,70,1040,600)
+            self.heures_vol.setGeometry(260,70,1020,600)
+
+        # reload immatriculations in case new aircrafts have been added
+        try:
+            self.heures_vol.load_immatriculations()
+        except Exception:
+            pass
 
         if self.heures_vol.isVisible():
             self.heures_vol.hide()
@@ -361,7 +381,7 @@ class Bienvenue(QWidget):
     def show_moteurs(self):
         if self.moteurs is None:
             self.moteurs = Moteurs(self)
-            self.moteurs.setGeometry(300,70,1040,600)
+            self.moteurs.setGeometry(260,70,1020,600)
 
         if self.moteurs.isVisible():
             self.moteurs.hide()
@@ -373,7 +393,7 @@ class Bienvenue(QWidget):
     def show_helices(self):
         if self.g_helices is None:
             self.g_helices = Helices(self)
-            self.g_helices.setGeometry(300,70,1040,600)
+            self.g_helices.setGeometry(260,70,1020,600)
 
         if self.g_helices.isVisible():
             self.g_helices.hide()
@@ -385,7 +405,7 @@ class Bienvenue(QWidget):
     def show_directive(self):
         if self.g_directives is None:
             self.g_directives = Directives(self)
-            self.g_directives.setGeometry(300,70,1040,600)
+            self.g_directives.setGeometry(260,70,1020,600)
 
         if self.g_directives.isVisible():
             self.g_directives.hide()
@@ -397,7 +417,7 @@ class Bienvenue(QWidget):
     def show_services(self):
         if self.services is None:
             self.services = ServicesBulletins(self)
-            self.services.setGeometry(300,70,1040,600)
+            self.services.setGeometry(260,70,1020,600)
 
         if self.services.isVisible():
             self.services.hide()
@@ -409,7 +429,7 @@ class Bienvenue(QWidget):
     def show_bilan(self):
         if self.bilan_services is None:
             self.bilan_services = Bilan(self)
-            self.bilan_services.setGeometry(300,70,1040,600)
+            self.bilan_services.setGeometry(260,70,1020,600)
 
         if self.bilan_services.isVisible():
             self.bilan_services.hide()
@@ -421,7 +441,7 @@ class Bienvenue(QWidget):
     def show_travaux(self):
         if self.travaux_ is None:
             self.travaux_ = Travaux(self)
-            self.travaux_.setGeometry(300,70,1040,600)
+            self.travaux_.setGeometry(260,70,1020,600)
 
         if self.travaux_.isVisible():
             self.travaux_.hide()
@@ -433,7 +453,7 @@ class Bienvenue(QWidget):
     def show_documents(self):
         if self.documents_ is None:
             self.documents_ = Documents(self)
-            self.documents_.setGeometry(300,70,1040,600)
+            self.documents_.setGeometry(260,70,1020,600)
 
         if self.documents_.isVisible():
             self.documents_.hide()
@@ -445,7 +465,7 @@ class Bienvenue(QWidget):
     def show_recapitulatifs(self):
         if self.recapitulatifs_ is None:
             self.recapitulatifs_ = Recapitulatifs(self)
-            self.recapitulatifs_.setGeometry(300,70,1040,600)
+            self.recapitulatifs_.setGeometry(260,70,1020,600)
 
         if self.recapitulatifs_.isVisible():
             self.recapitulatifs_.hide()
@@ -457,7 +477,7 @@ class Bienvenue(QWidget):
     def show_temps_vie(self):
         if self.temps is None:
             self.temps = Temps_vie(self)
-            self.temps.setGeometry(300,70,1040,600)
+            self.temps.setGeometry(260,70,1020,600)
 
         if self.temps.isVisible():
             self.temps.hide()
@@ -469,7 +489,7 @@ class Bienvenue(QWidget):
     def show_alertes(self):
         if self.alertes_frame is None:
             self.alertes_frame = AlertesDashboard(self)
-            self.alertes_frame.setGeometry(270,70,1070,620)
+            self.alertes_frame.setGeometry(270,55,1050,620)
 
         if self.alertes_frame.isVisible():
             self.alertes_frame.hide()

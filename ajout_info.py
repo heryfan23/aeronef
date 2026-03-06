@@ -12,7 +12,7 @@ class AjoutInfo(QFrame):
         self.setFrameShadow(QFrame.Shadow.Raised)
 
         if parent is None:
-            self.setGeometry(100, 100, 900, 450)
+            self.setGeometry(50, 100, 900, 450)
 
         self.setStyleSheet("background-color: #2d2d69;border-radius:10px")
     
@@ -21,16 +21,27 @@ class AjoutInfo(QFrame):
         self.label_info.setStyleSheet("color:white;font-size:20px;background-color:None")
         self.lower()
         
+        # filtre par immatriculation à côté du titre
+        self.filter_label = QLabel("Filtrer immatriculation :", self)
+        self.filter_label.setGeometry(440, 70, 160, 30)
+        self.filter_label.setStyleSheet("color:white; font-size:14px; background-color:None")
+        
+        self.filter_input = QLineEdit(self)
+        self.filter_input.setGeometry(610, 70, 200, 30)
+        self.filter_input.setStyleSheet("background-color: white; border:1px solid black; padding:5px; font-size:14px")
+        self.filter_input.textChanged.connect(self.apply_filter)
+        
         # Faire une tableau
-        self.tableau_affichage = QTableWidget(20,6,self)
+        self.tableau_affichage = QTableWidget(20,7,self)
         self.tableau_affichage.setGeometry(10,110,1000,400)
-        self.tableau_affichage.setHorizontalHeaderLabels(["Immatriculation","Marque/modele","Numero Serie","Date de Fabrication","Propriétaire/Exploitant","heures total"])
-        self.tableau_affichage.setColumnWidth(0,150)
-        self.tableau_affichage.setColumnWidth(1,200)
-        self.tableau_affichage.setColumnWidth(2,200)
-        self.tableau_affichage.setColumnWidth(3,200)
-        self.tableau_affichage.setColumnWidth(4,200)
-        self.tableau_affichage.setColumnWidth(5,200)
+        self.tableau_affichage.setHorizontalHeaderLabels(["Immatriculation","Marque/modele","Numero Serie","Date de Fabrication","Propriétaire/Exploitant","heures total","Cycles Total"])
+        self.tableau_affichage.setColumnWidth(0,120)
+        self.tableau_affichage.setColumnWidth(1,150)
+        self.tableau_affichage.setColumnWidth(2,150)
+        self.tableau_affichage.setColumnWidth(3,150)
+        self.tableau_affichage.setColumnWidth(4,150)
+        self.tableau_affichage.setColumnWidth(5,120)
+        self.tableau_affichage.setColumnWidth(6,120)
         self.tableau_affichage.setStyleSheet("background-color:white;color:black;border:none")
         self.tableau_affichage.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.tableau_affichage.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -128,10 +139,18 @@ class AjoutInfo(QFrame):
         self.heures_total.setGeometry(650, 160, 300, 35)
         self.heures_total.setStyleSheet("background-color: white;border:1px solid black;color:black;padding:5px;font-size:15px")
         
+        self.cycles = QLabel("Cycles Total:", self.frame_ajout)
+        self.cycles.setGeometry(550, 210, 150, 30)
+        self.cycles.setStyleSheet("color: black; font-size: 16px;background-color:none;")
+
+        self.cycles_total = QLineEdit(self.frame_ajout)
+        self.cycles_total.setGeometry(650, 210, 300, 35)
+        self.cycles_total.setStyleSheet("background-color: white;border:1px solid black;color:black;padding:5px;font-size:15px")
+        
         self.hr_2 = QLabel(self.frame_ajout)
         self.hr_2.setGeometry(0,320,1200,3)
         self.hr_2.setStyleSheet("background-color:black")
-        
+
         self.enregistrer = QPushButton("Enregistrer",self.frame_ajout)
         self.enregistrer.setGeometry(700,350,200,40)
         self.enregistrer.setStyleSheet("background-color:blue;color:white;font-size:15px;border-radius:10px;")
@@ -158,6 +177,11 @@ class AjoutInfo(QFrame):
                     heures_total TEXT
                 )
             ''')
+            # Add cycles_total column if it doesn't exist
+            try:
+                self.cursor.execute("ALTER TABLE aircrafts ADD COLUMN cycles_total TEXT")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
             self.conn.commit()
         except Exception as e:
             print('Erreur initialisation DB:', e)
@@ -287,6 +311,7 @@ class AjoutInfo(QFrame):
         date_fab = self.tableau_affichage.item(row, 3).text() if self.tableau_affichage.item(row, 3) else ""
         proprietaire = self.tableau_affichage.item(row, 4).text() if self.tableau_affichage.item(row, 4) else ""
         heures = self.tableau_affichage.item(row, 5).text() if self.tableau_affichage.item(row, 5) else ""
+        cycles = self.tableau_affichage.item(row, 6).text() if self.tableau_affichage.item(row, 6) else ""
         
         # Remplir les champs du formulaire
         self.immatriculation_input.setText(immat)
@@ -296,6 +321,7 @@ class AjoutInfo(QFrame):
         self.date_fabrication.setDate(QDate.fromString(date_fab, "yyyy-MM-dd"))
         self.ppte_exploi.setText(proprietaire)
         self.heures_total.setText(heures)
+        self.cycles_total.setText(cycles)
         
         # Changer le titre et le comportement du formulaire
         self.titre.setText("Modifier l'information de l'aeronef")
@@ -312,13 +338,20 @@ class AjoutInfo(QFrame):
         datefab = self.date_fabrication.date().toString("yyyy-MM-dd")
         proprietaire = self.ppte_exploi.text().strip()
         heures = self.heures_total.text().strip()
+        cycles = self.cycles_total.text().strip()
         
         try:
             self.cursor.execute(
-                'UPDATE aircrafts SET marque=?, serie=?, date_fabrication=?, proprietaire=?, heures_total=? WHERE immatriculation=?',
-                (marque, serie, datefab, proprietaire, heures, immat)
+                'UPDATE aircrafts SET marque=?, serie=?, date_fabrication=?, proprietaire=?, heures_total=?, cycles_total=? WHERE immatriculation=?',
+                (marque, serie, datefab, proprietaire, heures, cycles, immat)
             )
             self.conn.commit()
+            parent = self.parent()
+            if parent is not None and hasattr(parent, 'refresh_all_immatriculations'):
+                try:
+                    parent.refresh_all_immatriculations()
+                except Exception:
+                    pass
         except Exception as e:
             print('Erreur mise à jour DB:', e)
             return
@@ -390,6 +423,12 @@ class AjoutInfo(QFrame):
                     pass
             self.cursor.execute('DELETE FROM aircrafts WHERE immatriculation=?', (immat,))
             self.conn.commit()
+            parent = self.parent()
+            if parent is not None and hasattr(parent, 'refresh_all_immatriculations'):
+                try:
+                    parent.refresh_all_immatriculations()
+                except Exception:
+                    pass
         except Exception as e:
             print('Erreur suppression DB:', e)
             return
@@ -405,6 +444,7 @@ class AjoutInfo(QFrame):
         self.date_fabrication.setDate(QDate.currentDate())
         self.ppte_exploi.clear()
         self.heures_total.clear()
+        self.cycles_total.clear()
         self.titre.setText("Ajouter l'information de l'aeronef")
         self.enregistrer.setText("Enregistrer")
         self.enregistrer.disconnect()
@@ -429,17 +469,25 @@ class AjoutInfo(QFrame):
         datefab = self.date_fabrication.date().toString("yyyy-MM-dd")
         proprietaire = self.ppte_exploi.text().strip()
         heures = self.heures_total.text().strip()
+        cycles = self.cycles_total.text().strip()
 
-        if immat or marque or serie or datefab or proprietaire or heures:
+        if immat or marque or serie or datefab or proprietaire or heures or cycles:
             if not immat:
                 return
 
             try:
                 self.cursor.execute(
-                    'INSERT INTO aircrafts (immatriculation, marque, serie, date_fabrication, proprietaire, heures_total) VALUES (?, ?, ?, ?, ?, ?)',
-                    (immat, marque, serie, datefab, proprietaire, heures)
+                    'INSERT INTO aircrafts (immatriculation, marque, serie, date_fabrication, proprietaire, heures_total, cycles_total) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                    (immat, marque, serie, datefab, proprietaire, heures, cycles)
                 )
                 self.conn.commit()
+                # tell the parent window to refresh any comboboxes that list matricules
+                parent = self.parent()
+                if parent is not None and hasattr(parent, 'refresh_all_immatriculations'):
+                    try:
+                        parent.refresh_all_immatriculations()
+                    except Exception:
+                        pass
             except sqlite3.IntegrityError:
                 msg = QMessageBox(self)
                 msg.setIcon(QMessageBox.Icon.Critical)
@@ -467,13 +515,16 @@ class AjoutInfo(QFrame):
         self.date_fabrication.setDate(QDate.currentDate())
         self.ppte_exploi.clear()
         self.heures_total.clear()
+        self.cycles_total.clear()
 
         # recharger le tableau
         self.load_informations()
+        self.tableau_affichage.setVisible(True)
+        self.frame_ajout.hide()
 
     def load_informations(self):
         try:
-            self.cursor.execute('SELECT immatriculation, marque, serie, date_fabrication, proprietaire, heures_total FROM aircrafts ORDER BY id DESC')
+            self.cursor.execute('SELECT immatriculation, marque, serie, date_fabrication, proprietaire, heures_total, cycles_total FROM aircrafts ORDER BY id DESC')
             rows = self.cursor.fetchall()
         except Exception as e:
             print('Erreur lecture DB:', e)
@@ -482,6 +533,8 @@ class AjoutInfo(QFrame):
         # ajuster le nombre de lignes du tableau
         row_count = max(20, len(rows))
         self.tableau_affichage.setRowCount(row_count)
+        # clear filter when reloading
+        self.filter_input.setText("")
 
         # vider le contenu existant
         self.tableau_affichage.clearContents()
@@ -493,6 +546,19 @@ class AjoutInfo(QFrame):
         
         
         
+    
+        
+    def apply_filter(self, text: str):
+        """Masque les lignes du tableau dont l'immatriculation ne contient pas *text*."""
+        term = text.strip().lower()
+        for row in range(self.tableau_affichage.rowCount()):
+            item = self.tableau_affichage.item(row, 0)
+            if not term:
+                # show all if filtre vide
+                self.tableau_affichage.setRowHidden(row, False)
+            else:
+                show = bool(item and term in item.text().lower())
+                self.tableau_affichage.setRowHidden(row, not show)
         
     
         

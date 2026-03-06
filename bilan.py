@@ -1,5 +1,5 @@
-from PyQt6.QtWidgets import QLineEdit, QWidget, QLabel, QPushButton,QFrame,QTableWidget,QDateEdit, QTableWidgetItem, QComboBox, QMessageBox, QAbstractItemView, QMenu, QDialog, QVBoxLayout, QHBoxLayout, QDateTimeEdit
-from PyQt6.QtCore import Qt, QDate, QDateTime, QTime
+from PyQt6.QtWidgets import QLineEdit, QWidget, QLabel, QPushButton,QFrame,QTableWidget,QDateEdit, QTableWidgetItem, QComboBox, QMessageBox, QAbstractItemView, QMenu, QDialog, QVBoxLayout, QHBoxLayout, QDateTimeEdit, QCompleter
+from PyQt6.QtCore import Qt, QDate, QDateTime, QTime, QStringListModel
 from PyQt6.QtGui import QColor
 import sqlite3
 import os
@@ -12,7 +12,7 @@ class Bilan(QFrame):
         self.setFrameShadow(QFrame.Shadow.Raised)
 
         if parent is None:
-            self.setGeometry(100, 100, 900, 500)
+            self.setGeometry(50, 100, 900, 500)
 
         self.setStyleSheet("background-color: #2d2d69;border-radius:10px")
         
@@ -24,6 +24,16 @@ class Bilan(QFrame):
         self.hr_1 = QLabel(self)
         self.hr_1.setGeometry(20,60,980,3)
         self.hr_1.setStyleSheet("background-color:white")
+        # filtre immatriculation
+        self.filter_label = QLabel("Filtrer immatriculation :", self)
+        self.filter_label.setGeometry(440, 70, 160, 30)
+        self.filter_label.setStyleSheet("color:white; font-size:14px; background-color:None")
+        self.filter_input = QLineEdit(self)
+        self.filter_input.setGeometry(610, 70, 200, 30)
+        self.filter_input.setStyleSheet("background-color: white; border:1px solid black; padding:5px; font-size:14px")
+        self.filter_input.textChanged.connect(self.apply_filter)
+        self.filter_completer = QCompleter()
+        self.filter_input.setCompleter(self.filter_completer)
          # Faire une tableau
         self.tableau_affichage = QTableWidget(20,6,self)
         self.tableau_affichage.setGeometry(10,110,1000,400)
@@ -185,6 +195,11 @@ class Bilan(QFrame):
             self.immatriculation_input.clear()
             for immat in immatriculations:
                 self.immatriculation_input.addItem(immat[0])
+            # update autocomplete list and reset filter
+            if hasattr(self, 'filter_completer'):
+                self.filter_completer.setModel(QStringListModel([immat[0] for immat in immatriculations]))
+            if hasattr(self, 'filter_input'):
+                self.filter_input.setText("")
         except Exception as e:
             print('Erreur chargement immatriculations:', e)
     
@@ -215,6 +230,17 @@ class Bilan(QFrame):
                 item.setData(Qt.ItemDataRole.UserRole, row[0])
                 self.tableau_affichage.setItem(idx, col, item)
     
+    def apply_filter(self, text: str):
+        """Masque les lignes dont l'immatriculation ne contient pas le texte donné."""
+        term = text.strip().lower()
+        for row in range(self.tableau_affichage.rowCount()):
+            item = self.tableau_affichage.item(row, 0)
+            if not term:
+                self.tableau_affichage.setRowHidden(row, False)
+            else:
+                show = bool(item and term in item.text().lower())
+                self.tableau_affichage.setRowHidden(row, not show)
+
     def save_bilan(self):
         """Sauvegarde les donnees du bilan dans la base de donnees"""
         immat = self.immatriculation_input.currentText().strip()

@@ -1,5 +1,5 @@
-from PyQt6.QtWidgets import QLineEdit, QWidget, QLabel, QPushButton,QFrame,QTableWidget, QTableWidgetItem, QComboBox, QDateEdit, QMessageBox, QAbstractItemView, QMenu, QDialog, QVBoxLayout, QHBoxLayout
-from PyQt6.QtCore import Qt, QDate
+from PyQt6.QtWidgets import QLineEdit, QWidget, QLabel, QPushButton,QFrame,QTableWidget, QTableWidgetItem, QComboBox, QDateEdit, QMessageBox, QAbstractItemView, QMenu, QDialog, QVBoxLayout, QHBoxLayout, QCompleter
+from PyQt6.QtCore import Qt, QDate, QStringListModel
 from PyQt6.QtGui import QColor
 import sqlite3
 import os
@@ -33,6 +33,17 @@ class HeuresVol(QFrame):
         self.hr_1 = QLabel(self)
         self.hr_1.setGeometry(20,60,980,3)
         self.hr_1.setStyleSheet("background-color:white")
+        # filtre immatriculation
+        
+        self.filter_label = QLabel("Filtrer immatriculation :", self)
+        self.filter_label.setGeometry(440, 70, 160, 30)
+        self.filter_label.setStyleSheet("color:white; font-size:14px; background-color:None")
+        self.filter_input = QLineEdit(self)
+        self.filter_input.setGeometry(610, 70, 200, 30)
+        self.filter_input.setStyleSheet("background-color: white; border:1px solid black; padding:5px; font-size:14px")
+        self.filter_input.textChanged.connect(self.apply_filter)
+        self.filter_completer = QCompleter()
+        self.filter_input.setCompleter(self.filter_completer)
         
         # Faire une tableau
         # 4 colonnes : immatriculation, date, temps de vol et nombre de cycles
@@ -180,9 +191,24 @@ class HeuresVol(QFrame):
             self.immatriculation_input.clear()
             for immat in immatriculations:
                 self.immatriculation_input.addItem(immat[0])
+            # update completer and reset filter
+            if hasattr(self, 'filter_completer'):
+                self.filter_completer.setModel(QStringListModel([immat[0] for immat in immatriculations]))
+            if hasattr(self, 'filter_input'):
+                self.filter_input.setText("")
         except Exception as e:
             print('Erreur chargement immatriculations:', e)
     
+    def apply_filter(self, text: str):
+        term = text.strip().lower()
+        for row in range(self.tableau_affichage.rowCount()):
+            item = self.tableau_affichage.item(row, 0)
+            if not term:
+                self.tableau_affichage.setRowHidden(row, False)
+            else:
+                show = bool(item and term in item.text().lower())
+                self.tableau_affichage.setRowHidden(row, not show)
+
     def calculate_totals(self):
         """Calcule et affiche le total des temps de vol et des cycles par immatriculation"""
         totals_time = {}

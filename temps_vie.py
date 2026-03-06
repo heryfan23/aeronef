@@ -1,5 +1,5 @@
-from PyQt6.QtWidgets import QLineEdit, QWidget, QLabel, QPushButton,QFrame,QTableWidget,QDateEdit, QTableWidgetItem, QComboBox, QMessageBox, QAbstractItemView, QMenu, QDialog, QVBoxLayout, QHBoxLayout
-from PyQt6.QtCore import Qt, QDate
+from PyQt6.QtWidgets import QCompleter, QLineEdit, QWidget, QLabel, QPushButton,QFrame,QTableWidget,QDateEdit, QTableWidgetItem, QComboBox, QMessageBox, QAbstractItemView, QMenu, QDialog, QVBoxLayout, QHBoxLayout
+from PyQt6.QtCore import QStringListModel, Qt, QDate
 from PyQt6.QtGui import QColor
 import sqlite3
 import os
@@ -25,6 +25,17 @@ class Temps_vie(QFrame):
         self.hr_1.setGeometry(20,60,980,3)
         self.hr_1.setStyleSheet("background-color:white")
         
+        # filtre immatriculation
+        self.filter_label = QLabel("Filtrer immatriculation :", self)
+        self.filter_label.setGeometry(440, 70, 160, 30)
+        self.filter_label.setStyleSheet("color:white; font-size:14px; background-color:None")
+        self.filter_input = QLineEdit(self)
+        self.filter_input.setGeometry(610, 70, 200, 30)
+        self.filter_input.setStyleSheet("background-color: white; border:1px solid black; padding:5px; font-size:14px")
+        self.filter_input.textChanged.connect(self.apply_filter)
+        self.filter_completer = QCompleter()
+        self.filter_input.setCompleter(self.filter_completer)
+        
         # Faire une tableau
         # adjust columns to match new data structure
         # columns: immat, total heures cellule, nbr tot cycles cellule,
@@ -43,7 +54,8 @@ class Temps_vie(QFrame):
             "Action",
             "Ref Docs",
             "Date installation",
-            "Potentiel Date",
+            "heure installation",
+            "Nbr Cycles",
             "Pot en mois",
             "Potentiel heures",
             "Potentiel cycles",
@@ -51,7 +63,6 @@ class Temps_vie(QFrame):
             "Pot restant",
             "Pot restant cycles",
             "Nom equipements",
-            "Date inst equipements",
             "Date calibration"
         ])
         self.tableau_affichage.setColumnWidth(0,150)
@@ -159,85 +170,87 @@ class Temps_vie(QFrame):
         self.date_installation.setDisplayFormat("yyyy-MM-dd")
         self.date_installation.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
         
-        self.potentiel_date_label = QLabel("Potentiel Date (Pom):", self.frame_temps)
-        self.potentiel_date_label.setGeometry(20, 340, 250, 30)
-        self.potentiel_date_label.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
-        self.potentiel_date = QDateEdit(self.frame_temps)
-        self.potentiel_date.setGeometry(250, 340, 250, 30)
-        self.potentiel_date.setDate(QDate.currentDate())
-        self.potentiel_date.setCalendarPopup(True)
-        self.potentiel_date.setDisplayFormat("yyyy-MM-dd")
-        self.potentiel_date.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
+        self.heure_inst_label = QLabel("Heure installation:", self.frame_temps)
+        self.heure_inst_label.setGeometry(20, 340, 250, 30)
+        self.heure_inst_label.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
+        self.heure_inst = QLineEdit(self.frame_temps)
+        self.heure_inst.setGeometry(250, 340, 250, 30)
+        self.heure_inst.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
+        
+        
+        self.nombre_cycles = QLabel("Cycles :", self.frame_temps)
+        self.nombre_cycles.setGeometry(20, 380, 250, 30)
+        self.nombre_cycles.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
+        self.nombre_cycles_input = QLineEdit(self.frame_temps)
+        self.nombre_cycles_input.setGeometry(250, 380, 250, 30)
+        self.nombre_cycles_input.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
         
         self.potentiel_heures_label = QLabel("Potentiel heures:", self.frame_temps)
-        self.potentiel_heures_label.setGeometry(20, 380, 250, 30)
+        self.potentiel_heures_label.setGeometry(20, 420, 250, 30)
         self.potentiel_heures_label.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
         self.potentiel_heures = QLineEdit(self.frame_temps)
-        self.potentiel_heures.setGeometry(250, 380, 250, 30)
+        self.potentiel_heures.setGeometry(250, 420, 250, 30)
         self.potentiel_heures.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
         
         self.potentiel_cycles_label = QLabel("Potentiel cycles:", self.frame_temps)
-        self.potentiel_cycles_label.setGeometry(20, 420, 250, 30)
+        self.potentiel_cycles_label.setGeometry(550, 20, 250, 30)
         self.potentiel_cycles_label.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
         self.potentiel_cycles = QLineEdit(self.frame_temps)
-        self.potentiel_cycles.setGeometry(250, 420, 250, 30)
+        self.potentiel_cycles.setGeometry(750, 20, 200, 30)
         self.potentiel_cycles.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
         
         # Pot en mois (utilisé pour calcul date prochaine revision)
         self.pot_months_label = QLabel("Pot en mois:", self.frame_temps)
-        self.pot_months_label.setGeometry(20, 460, 250, 30)
+        self.pot_months_label.setGeometry(550, 70, 250, 30)
         self.pot_months_label.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
         self.pot_months = QLineEdit(self.frame_temps)
-        self.pot_months.setGeometry(250, 460, 250, 30)
+        self.pot_months.setGeometry(750, 70, 200, 30)
         self.pot_months.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
 
         self.dates_proc_rev_label = QLabel("Dates Proc rev:", self.frame_temps)
-        self.dates_proc_rev_label.setGeometry(20, 500, 250, 30)
+        self.dates_proc_rev_label.setGeometry(550, 120, 250, 30)
         self.dates_proc_rev_label.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
         self.dates_proc_rev = QDateEdit(self.frame_temps)
-        self.dates_proc_rev.setGeometry(250, 500, 250, 30)
+        self.dates_proc_rev.setGeometry(750, 120, 200, 30)
         self.dates_proc_rev.setDate(QDate.currentDate())
         self.dates_proc_rev.setCalendarPopup(True)
         self.dates_proc_rev.setDisplayFormat("yyyy-MM-dd")
         self.dates_proc_rev.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
         
         self.pot_restant_label = QLabel("Pot restant:", self.frame_temps)
-        self.pot_restant_label.setGeometry(550, 20, 250, 30)
+        self.pot_restant_label.setGeometry(550, 170, 250, 30)
         self.pot_restant_label.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
         self.pot_restant = QLineEdit(self.frame_temps)
-        self.pot_restant.setGeometry(750, 20, 200, 30)
+        self.pot_restant.setGeometry(750, 170, 200, 30)
         self.pot_restant.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
         
         self.pot_restant_cycles_label = QLabel("Pot restant cycles:", self.frame_temps)
-        self.pot_restant_cycles_label.setGeometry(550, 60, 250, 30)
+        self.pot_restant_cycles_label.setGeometry(550, 220, 250, 30)
         self.pot_restant_cycles_label.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
         self.pot_restant_cycles = QLineEdit(self.frame_temps)
-        self.pot_restant_cycles.setGeometry(750, 60, 200, 30)
+        self.pot_restant_cycles.setGeometry(750, 220, 200, 30)
         self.pot_restant_cycles.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
         
         # right side equipment fields similar to moteurs
         self.nom_equipements_label = QLabel("Nom equipements:", self.frame_temps)
-        self.nom_equipements_label.setGeometry(550, 100, 250, 30)
+        self.nom_equipements_label.setGeometry(550, 270, 250, 30)
         self.nom_equipements_label.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
         self.nom_equipements = QLineEdit(self.frame_temps)
-        self.nom_equipements.setGeometry(750, 100, 200, 30)
+        self.nom_equipements.setGeometry(750, 270, 200, 30)
         self.nom_equipements.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
         
-        self.date_inst_equipements_label = QLabel("Date inst equipements:", self.frame_temps)
-        self.date_inst_equipements_label.setGeometry(550, 140, 250, 30)
-        self.date_inst_equipements_label.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
-        self.date_inst_equipements = QDateEdit(self.frame_temps)
-        self.date_inst_equipements.setGeometry(750, 140, 200, 30)
-        self.date_inst_equipements.setDate(QDate.currentDate())
-        self.date_inst_equipements.setCalendarPopup(True)
-        self.date_inst_equipements.setDisplayFormat("yyyy-MM-dd")
-        self.date_inst_equipements.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
+        # self.nombre_cycles = QLabel("Cycles :", self.frame_temps)
+        # self.nombre_cycles.setGeometry(550, 140, 250, 30)
+        # self.nombre_cycles.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
+        # self.nombre_cycles_input = QLineEdit(self.frame_temps)
+        # self.nombre_cycles_input.setGeometry(750, 140, 200, 30)
+        # self.nombre_cycles_input.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
         
         self.date_calibration_label = QLabel("Date de calibration:", self.frame_temps)
-        self.date_calibration_label.setGeometry(550, 180, 250, 30)
+        self.date_calibration_label.setGeometry(550, 320, 250, 30)
         self.date_calibration_label.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
         self.date_calibration = QDateEdit(self.frame_temps)
-        self.date_calibration.setGeometry(750, 180, 200, 30)
+        self.date_calibration.setGeometry(750, 320, 200, 30)
         self.date_calibration.setDate(QDate.currentDate())
         self.date_calibration.setCalendarPopup(True)
         self.date_calibration.setDisplayFormat("yyyy-MM-dd")
@@ -268,7 +281,7 @@ class Temps_vie(QFrame):
                     action TEXT,
                     ref_docs TEXT,
                     date_installation TEXT,
-                    potentiel_date TEXT,
+                    heure_inst TEXT,
                     pot_months TEXT,
                     potentiel_heures TEXT,
                     potentiel_cycles TEXT,
@@ -276,7 +289,7 @@ class Temps_vie(QFrame):
                     pot_restant TEXT,
                     pot_restant_cycles TEXT,
                     nom_equipements TEXT,
-                    date_inst_equipements TEXT,
+                    nombre_cycles_input TEXT,
                     date_calibration TEXT,
                     FOREIGN KEY (immatriculation) REFERENCES aircrafts(immatriculation) ON DELETE CASCADE
                 )
@@ -302,7 +315,7 @@ class Temps_vie(QFrame):
             'action',
             'ref_docs',
             'date_installation',
-            'potentiel_date',
+            'heure_inst',
             'pot_months',
             'potentiel_heures',
             'potentiel_cycles',
@@ -310,7 +323,7 @@ class Temps_vie(QFrame):
             'pot_restant',
             'pot_restant_cycles',
             'nom_equipements',
-            'date_inst_equipements',
+            'nombre_cycles_input',
             'date_calibration'
         ]
         
@@ -337,6 +350,10 @@ class Temps_vie(QFrame):
             self.immatriculation_input.clear()
             for immat in immatriculations:
                 self.immatriculation_input.addItem(immat[0])
+            if hasattr(self, 'filter_completer'):
+                self.filter_completer.setModel(QStringListModel([immat[0] for immat in immatriculations]))
+            if hasattr(self, 'filter_input'):
+                self.filter_input.setText("")
         except Exception as e:
             print('Erreur chargement immatriculations:', e)
     
@@ -345,9 +362,9 @@ class Temps_vie(QFrame):
         try:
             self.cursor.execute(
                 'SELECT id, immatriculation, total_heures_cellule, nbr_tot_cycles_cellule, '
-                'num_ref_ata, description, action, ref_docs, date_installation, potentiel_date, pot_months, '
+                'num_ref_ata, description, action, ref_docs, date_installation, heure_inst, pot_months, '
                 'potentiel_heures, potentiel_cycles, dates_proc_rev, pot_restant, pot_restant_cycles, '
-                'nom_equipements, date_inst_equipements, date_calibration '
+                'nom_equipements, nombre_cycles_input, date_calibration '
                 'FROM temps_vie ORDER BY immatriculation DESC'
             )
             rows = self.cursor.fetchall()
@@ -380,7 +397,7 @@ class Temps_vie(QFrame):
         action = self.action.text().strip()
         ref_docs = self.ref_docs.text().strip()
         date_install = self.date_installation.date().toString("yyyy-MM-dd")
-        potentiel_date = self.potentiel_date.date().toString("yyyy-MM-dd")
+        heure_inst = self.heure_inst.text().strip()
         pot_months = self.pot_months.text().strip()
         potentiel_heures = self.potentiel_heures.text().strip()
         potentiel_cycles = self.potentiel_cycles.text().strip()
@@ -388,7 +405,7 @@ class Temps_vie(QFrame):
         pot_restant = self.pot_restant.text().strip()
         pot_restant_cycles = self.pot_restant_cycles.text().strip()
         nom_equipements = self.nom_equipements.text().strip()
-        date_inst_equipements = self.date_inst_equipements.date().toString("yyyy-MM-dd")
+        nombre_cycles_input = self.nombre_cycles_input.date().toString("yyyy-MM-dd")
         date_calib = self.date_calibration.date().toString("yyyy-MM-dd")
         
         if not immat:
@@ -402,8 +419,8 @@ class Temps_vie(QFrame):
         
         try:
             self.cursor.execute(
-                'INSERT INTO temps_vie (immatriculation, total_heures_cellule, nbr_tot_cycles_cellule, num_ref_ata, description, action, ref_docs, date_installation, potentiel_date, pot_months, potentiel_heures, potentiel_cycles, dates_proc_rev, pot_restant, pot_restant_cycles, nom_equipements, date_inst_equipements, date_calibration) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ',
-                (immat, total_heures, nbr_cycles, num_ref, description, action, ref_docs, date_install, potentiel_date, pot_months, potentiel_heures, potentiel_cycles, dates_proc_rev, pot_restant, pot_restant_cycles, nom_equipements, date_inst_equipements, date_calib)
+                'INSERT INTO temps_vie (immatriculation, total_heures_cellule, nbr_tot_cycles_cellule, num_ref_ata, description, action, ref_docs, date_installation, heure_inst, pot_months, potentiel_heures, potentiel_cycles, dates_proc_rev, pot_restant, pot_restant_cycles, nom_equipements, nombre_cycles_input, date_calibration) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ',
+                (immat, total_heures, nbr_cycles, num_ref, description, action, ref_docs, date_install, heure_inst, pot_months, potentiel_heures, potentiel_cycles, dates_proc_rev, pot_restant, pot_restant_cycles, nom_equipements, nombre_cycles_input, date_calib)
             )
             self.conn.commit()
         except Exception as e:
@@ -424,7 +441,7 @@ class Temps_vie(QFrame):
         self.action.clear()
         self.ref_docs.clear()
         self.date_installation.setDate(QDate.currentDate())
-        self.potentiel_date.setDate(QDate.currentDate())
+        self.heure_inst.clear()
         self.potentiel_heures.clear()
         self.potentiel_cycles.clear()
         self.pot_months.clear()
@@ -432,7 +449,7 @@ class Temps_vie(QFrame):
         self.pot_restant.clear()
         self.pot_restant_cycles.clear()
         self.nom_equipements.clear()
-        self.date_inst_equipements.setDate(QDate.currentDate())
+        self.nombre_cycles_input.clear()
         self.date_calibration.setDate(QDate.currentDate())
         
         # Recharger le tableau
@@ -535,7 +552,7 @@ class Temps_vie(QFrame):
         action = self.tableau_affichage.item(row, 5).text() if self.tableau_affichage.item(row, 5) else ""
         ref_docs = self.tableau_affichage.item(row, 6).text() if self.tableau_affichage.item(row, 6) else ""
         date_install = self.tableau_affichage.item(row, 7).text() if self.tableau_affichage.item(row, 7) else ""
-        potentiel_date = self.tableau_affichage.item(row, 8).text() if self.tableau_affichage.item(row, 8) else ""
+        heure_inst = self.tableau_affichage.item(row, 8).text() if self.tableau_affichage.item(row, 8) else ""
         pot_months = self.tableau_affichage.item(row, 9).text() if self.tableau_affichage.item(row, 9) else ""
         potentiel_heures = self.tableau_affichage.item(row, 10).text() if self.tableau_affichage.item(row, 10) else ""
         potentiel_cycles = self.tableau_affichage.item(row, 11).text() if self.tableau_affichage.item(row, 11) else ""
@@ -543,7 +560,7 @@ class Temps_vie(QFrame):
         pot_restant = self.tableau_affichage.item(row, 13).text() if self.tableau_affichage.item(row, 13) else ""
         pot_restant_cycles = self.tableau_affichage.item(row, 14).text() if self.tableau_affichage.item(row, 14) else ""
         nom_equipements = self.tableau_affichage.item(row, 15).text() if self.tableau_affichage.item(row, 15) else ""
-        date_inst_equipements = self.tableau_affichage.item(row, 16).text() if self.tableau_affichage.item(row, 16) else ""
+        nombre_cycles_input = self.tableau_affichage.item(row, 16).text() if self.tableau_affichage.item(row, 16) else ""
         date_calib = self.tableau_affichage.item(row, 17).text() if self.tableau_affichage.item(row, 17) else ""
         
         # Remplir les champs du formulaire
@@ -555,7 +572,7 @@ class Temps_vie(QFrame):
         self.action.setText(action)
         self.ref_docs.setText(ref_docs)
         self.date_installation.setDate(QDate.fromString(date_install, "yyyy-MM-dd"))
-        self.potentiel_date.setDate(QDate.fromString(potentiel_date, "yyyy-MM-dd"))
+        self.heure_inst.setText(heure_inst)
         self.pot_months.setText(pot_months)
         self.potentiel_heures.setText(potentiel_heures)
         self.potentiel_cycles.setText(potentiel_cycles)
@@ -563,7 +580,7 @@ class Temps_vie(QFrame):
         self.pot_restant.setText(pot_restant)
         self.pot_restant_cycles.setText(pot_restant_cycles)
         self.nom_equipements.setText(nom_equipements)
-        self.date_inst_equipements.setDate(QDate.fromString(date_inst_equipements, "yyyy-MM-dd"))
+        self.nombre_cycles_input.setText(nombre_cycles_input)
         self.date_calibration.setDate(QDate.fromString(date_calib, "yyyy-MM-dd"))
         
         # Changer le titre et le comportement du formulaire
@@ -582,7 +599,7 @@ class Temps_vie(QFrame):
         action = self.action.text().strip()
         ref_docs = self.ref_docs.text().strip()
         date_install = self.date_installation.date().toString("yyyy-MM-dd")
-        potentiel_date = self.potentiel_date.date().toString("yyyy-MM-dd")
+        heure_inst = self.heure_inst.text().strip()
         pot_months = self.pot_months.text().strip()
         potentiel_heures = self.potentiel_heures.text().strip()
         potentiel_cycles = self.potentiel_cycles.text().strip()
@@ -590,13 +607,13 @@ class Temps_vie(QFrame):
         pot_restant = self.pot_restant.text().strip()
         pot_restant_cycles = self.pot_restant_cycles.text().strip()
         nom_equipements = self.nom_equipements.text().strip()
-        date_inst_equipements = self.date_inst_equipements.date().toString("yyyy-MM-dd")
+        nombre_cycles_input = self.nombre_cycles_input.text().strip()
         dates_calib = self.date_calibration.date().toString("yyyy-MM-dd")
         
         try:
             self.cursor.execute(
-                'UPDATE temps_vie SET total_heures_cellule=?, nbr_tot_cycles_cellule=?, num_ref_ata=?, description=?, action=?, ref_docs=?, date_installation=?, potentiel_date=?, pot_months=?, potentiel_heures=?, potentiel_cycles=?, dates_proc_rev=?, pot_restant=?, pot_restant_cycles=?, nom_equipements=?, date_inst_equipements=?, date_calibration=? WHERE immatriculation=? AND date_calibration=?',
-                (total_heures, nbr_cycles, num_ref, description, action, ref_docs, date_install, potentiel_date, pot_months, potentiel_heures, potentiel_cycles, dates_proc_rev, pot_restant, pot_restant_cycles, nom_equipements, date_inst_equipements, dates_calib, immat, dates_calib_original)
+                'UPDATE temps_vie SET total_heures_cellule=?, nbr_tot_cycles_cellule=?, num_ref_ata=?, description=?, action=?, ref_docs=?, date_installation=?, heure_inst=?, pot_months=?, potentiel_heures=?, potentiel_cycles=?, dates_proc_rev=?, pot_restant=?, pot_restant_cycles=?, nom_equipements=?, nombre_cycles_input=?, date_calibration=? WHERE immatriculation=? AND date_calibration=?',
+                (total_heures, nbr_cycles, num_ref, description, action, ref_docs, date_install, heure_inst, pot_months, potentiel_heures, potentiel_cycles, dates_proc_rev, pot_restant, pot_restant_cycles, nom_equipements, nombre_cycles_input, dates_calib, immat, dates_calib_original)
             )
             self.conn.commit()
         except Exception as e:
@@ -668,14 +685,14 @@ class Temps_vie(QFrame):
         self.action.clear()
         self.ref_docs.clear()
         self.date_installation.setDate(QDate.currentDate())
-        self.potentiel_date.setDate(QDate.currentDate())
+        self.heure_inst.clear()
         self.potentiel_heures.clear()
         self.potentiel_cycles.clear()
         self.dates_proc_rev.setDate(QDate.currentDate())
         self.pot_restant.clear()
         self.pot_restant_cycles.clear()
         self.nom_equipements.clear()
-        self.date_inst_equipements.setDate(QDate.currentDate())
+        self.nombre_cycles_input.clear()
         self.date_calibration.setDate(QDate.currentDate())
         self.enregistrer.setText("Enregistrer")
         self.enregistrer.disconnect()
@@ -691,4 +708,15 @@ class Temps_vie(QFrame):
         self.tableau_affichage.setVisible(True)
         self.frame_temps.hide()
         self.btn_action.hide()
+    
+    def apply_filter(self, text: str):
+        """Masque les lignes dont l'immatriculation ne contient pas le texte donné."""
+        term = text.strip().lower()
+        for row in range(self.tableau_affichage.rowCount()):
+            item = self.tableau_affichage.item(row, 0)
+            if not term:
+                self.tableau_affichage.setRowHidden(row, False)
+            else:
+                show = bool(item and term in item.text().lower())
+                self.tableau_affichage.setRowHidden(row, not show)
         

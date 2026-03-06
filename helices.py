@@ -1,5 +1,5 @@
-from PyQt6.QtWidgets import QLineEdit, QWidget, QLabel, QPushButton,QFrame,QTableWidget,QDateEdit, QTableWidgetItem, QComboBox, QMessageBox, QAbstractItemView, QMenu, QDialog, QVBoxLayout, QHBoxLayout
-from PyQt6.QtCore import Qt, QDate
+from PyQt6.QtWidgets import QCompleter, QLineEdit, QWidget, QLabel, QPushButton,QFrame,QTableWidget,QDateEdit, QTableWidgetItem, QComboBox, QMessageBox, QAbstractItemView, QMenu, QDialog, QVBoxLayout, QHBoxLayout
+from PyQt6.QtCore import QStringListModel, Qt, QDate
 from PyQt6.QtGui import QColor
 import sqlite3
 import os
@@ -25,6 +25,16 @@ class Helices(QFrame):
         self.hr_1 = QLabel(self)
         self.hr_1.setGeometry(20,60,980,3)
         self.hr_1.setStyleSheet("background-color:white")
+        
+        self.filter_label = QLabel("Filtrer immatriculation :", self)
+        self.filter_label.setGeometry(440, 70, 160, 30)
+        self.filter_label.setStyleSheet("color:white; font-size:14px; background-color:None")
+        self.filter_input = QLineEdit(self)
+        self.filter_input.setGeometry(610, 70, 200, 30)
+        self.filter_input.setStyleSheet("background-color: white; border:1px solid black; padding:5px; font-size:14px")
+        self.filter_input.textChanged.connect(self.apply_filter)
+        self.filter_completer = QCompleter()
+        self.filter_input.setCompleter(self.filter_completer)
         
         # Faire une tableau
         # adjust columns to include separate hours and cycles for TSN and TSO
@@ -119,14 +129,16 @@ class Helices(QFrame):
         self.tsn_hours_label.setStyleSheet("color: black; font-size: 16px; background-color:none; font-weight:bold")
         self.tsn_hours_label.setGeometry(10, 170, 250, 30)
         self.tsn_hours = QLineEdit(self.frame_helices)
-        self.tsn_hours.setStyleSheet("background-color: white; border:1px solid black; color:black; padding:5px; font-size:15px")
+        self.tsn_hours.setStyleSheet("background-color: #f0f0f0; border:1px solid black; color:black; padding:5px; font-size:15px")
         self.tsn_hours.setGeometry(250, 170, 200, 30)
+        self.tsn_hours.setReadOnly(True)
         self.tsn_cycles_label = QLabel("TSN cycles:", self.frame_helices)
         self.tsn_cycles_label.setStyleSheet("color: black; font-size: 16px; background-color:none; font-weight:bold")
         self.tsn_cycles_label.setGeometry(10, 220, 250, 30)
         self.tsn_cycles = QLineEdit(self.frame_helices)
-        self.tsn_cycles.setStyleSheet("background-color: white; border:1px solid black; color:black; padding:5px; font-size:15px")
+        self.tsn_cycles.setStyleSheet("background-color: #f0f0f0; border:1px solid black; color:black; padding:5px; font-size:15px")
         self.tsn_cycles.setGeometry(250, 220, 200, 30)
+        self.tsn_cycles.setReadOnly(True)
       
         # TSO hours/cycles
         self.tso_hours_label = QLabel("TSO heures:", self.frame_helices)
@@ -156,16 +168,17 @@ class Helices(QFrame):
         
         self.install_hours_label = QLabel("Heures installation:", self.frame_helices)
         self.install_hours_label.setStyleSheet("color: black; font-size: 16px; background-color:none; font-weight:bold")
-        self.install_hours_label.setGeometry(10, 410, 250, 30)
+        self.install_hours_label.setGeometry(10, 410, 200, 30)
         
         self.install_hours = QLineEdit(self.frame_helices)
-        self.install_hours.setStyleSheet("background-color: white; border:1px solid black; color:black; padding:5px; font-size:15px")
+        self.install_hours.setStyleSheet("background-color: white; border:1px solid black; color:black; padding-left:5px; font-size:15px")
         self.install_hours.setGeometry(250, 410, 200, 30)
+        
         self.install_cycles_label = QLabel("Cycles installation:", self.frame_helices)
         self.install_cycles_label.setStyleSheet("color: black; font-size: 16px; background-color:none; font-weight:bold")
-        self.install_cycles_label.setGeometry(10, 450, 250, 30)
+        self.install_cycles_label.setGeometry(10, 450, 200, 30)
         self.install_cycles = QLineEdit(self.frame_helices)
-        self.install_cycles.setStyleSheet("background-color: white; border:1px solid black; color:black; padding:5px; font-size:15px")
+        self.install_cycles.setStyleSheet("background-color: white; border:1px solid black; color:black; padding-left:5px; font-size:15px")
         self.install_cycles.setGeometry(250, 450, 200, 30)
        
         # section potentiel title
@@ -242,6 +255,7 @@ class Helices(QFrame):
         # Connect signals for automatic calculations (date revision and pot restant)
         self.date_installation.dateChanged.connect(self.compute_date_revision)
         self.pot_months.textChanged.connect(self.compute_date_revision)
+        self.immatriculation_input.currentIndexChanged.connect(lambda _: self.calcul_tsn_hours())
         self.immatriculation_input.currentIndexChanged.connect(lambda _: self.compute_pot_restants())
         self.pot_hours.textChanged.connect(self.compute_pot_restants)
         self.install_hours.textChanged.connect(self.compute_pot_restants)
@@ -326,6 +340,15 @@ class Helices(QFrame):
         self.edit_mode = False
         self.current_edit_immat = None
         self.current_edit_date_rev = None
+        
+        # compute initial derived values
+        self.compute_date_revision()
+        self.compute_pot_restants()
+        self.compute_pot_restants_cycles()
+        # compute derived fields that depend on immatriculation
+        self.calcul_tsn_hours()
+        # initial display
+        self.compute_all()
 
     def load_immatriculations(self):
         """Charge tous les matricules depuis la table aircrafts"""
@@ -335,6 +358,12 @@ class Helices(QFrame):
             self.immatriculation_input.clear()
             for immat in immatriculations:
                 self.immatriculation_input.addItem(immat[0])
+                
+            # update autocomplete list and reset filter
+            if hasattr(self, 'filter_completer'):
+                self.filter_completer.setModel(QStringListModel([immat[0] for immat in immatriculations]))
+            if hasattr(self, 'filter_input'):
+                self.filter_input.setText("")
         except Exception as e:
             print('Erreur chargement immatriculations:', e)
     
@@ -366,6 +395,20 @@ class Helices(QFrame):
                 item.setData(Qt.ItemDataRole.UserRole, row[0])
                 self.tableau_affichage.setItem(idx, col, item)
     
+    def _format_hours_to_str(self, hours_float: float) -> str:
+        """Retourne une chaîne "hh:mm" à partir d'un nombre d'heures en float.
+        Arrondit les minutes au plus proche entier.
+        """
+        try:
+            h = int(hours_float)
+            m = int(round((hours_float - h) * 60))
+            if m == 60:
+                h += 1
+                m = 0
+            return f"{h}:{m:02d}"
+        except Exception:
+            return "0:00"
+
     def _parse_hours_str_to_float(self, s):
         """Parse un champ heures qui peut être 'hh:mm' ou un nombre décimal/entier.
         Retourne les heures en float."""
@@ -401,6 +444,52 @@ class Helices(QFrame):
 
         return total_hours, total_cycles
 
+    def calcul_tsn_hours(self, immat=None):
+        """Calcule TSN heures/cycles :
+        base = heures_total/cycles_total dans la table aircrafts
+        + totaux provenant de heures_vol pour la même immatriculation.
+        Met à jour les QLineEdit correspondants.
+        """
+        if immat is None:
+            immat = self.immatriculation_input.currentText().strip()
+        if not immat:
+            return
+        # récupérer heures/cycles de la fiche aéronef
+        try:
+            self.cursor.execute(
+                "SELECT heures_total, cycles_total FROM aircrafts WHERE immatriculation=?",
+                (immat,)
+            )
+            row = self.cursor.fetchone()
+        except Exception:
+            row = None
+
+        base_hours = 0.0
+        base_cycles = 0
+        if row:
+            if row[0]:
+                base_hours = self._parse_hours_str_to_float(row[0])
+            try:
+                base_cycles = int(row[1]) if row[1] is not None and str(row[1]).strip() != "" else 0
+            except Exception:
+                base_cycles = 0
+
+        # totaux depuis heures_vol
+        total_hv, total_cy = self._get_heures_cycles_from_heures_vol(immat)
+
+        tsn_h = base_hours + total_hv
+        tsn_c = base_cycles + total_cy
+
+        # mettre à jour les champs
+        try:
+            self.tsn_hours.setText(self._format_hours_to_str(tsn_h))
+        except Exception:
+            self.tsn_hours.setText("")
+        try:
+            self.tsn_cycles.setText(str(tsn_c))
+        except Exception:
+            self.tsn_cycles.setText("")
+
     def compute_date_revision(self):
         """Calcule `dates_revision` = `date_installation` + `pot_months` mois."""
         try:
@@ -424,44 +513,62 @@ class Helices(QFrame):
             immat = self.immatriculation_input.currentText().strip()
             pot_hours_val = self._parse_hours_str_to_float(self.pot_hours.text().strip())
             install_hours_val = self._parse_hours_str_to_float(self.install_hours.text().strip())
+            tsn_heures_val = self._parse_hours_str_to_float(self.tsn_hours.text().strip())
 
             total_hours_db, _ = (0.0, 0)
             if immat:
                 total_hours_db, _ = self._get_heures_cycles_from_heures_vol(immat)
 
-            remaining = pot_hours_val - (install_hours_val + total_hours_db)
-            if abs(remaining - round(remaining)) < 1e-6:
-                text = str(int(round(remaining)))
+            # remaining = pot_hours_val - (install_hours_val + total_hours_db)
+            # show full formula in the field
+            if pot_hours_val == 0:
+                self.pot_restant.setText("0")
+                
+            if tsn_heures_val > install_hours_val :
+                # formula = f"{pot_hours_val} - ({tsn_heures_val} - {install_hours_val}) = {pot_hours_val - (tsn_heures_val - install_hours_val):.1f}"
+                self.pot_restant.setText(f"{pot_hours_val - (tsn_heures_val - install_hours_val):.1f}")
             else:
-                text = f"{remaining:.1f}"
-            self.pot_restant.setText(text)
+                self.pot_restant.setText("TSN heures doit être supérieur à heures installation")
         except Exception:
             pass
+        # no direct update of calc_details here; compute_all will assemble
 
     def compute_pot_restants_cycles(self):
-        """Calcule pot_restant_cycles = pot_cycles - (install_cycles + total_cycles_from_heures_vol)"""
+        """Calcule pot_restant_cycles = pot_cycles - (install_cycles - total_cycles_from_heures_vol)"""
         try:
             immat = self.immatriculation_input.currentText().strip()
             try:
                 pot_cycles_val = int(self.pot_cycles.text().strip()) if self.pot_cycles.text().strip() else 0
-            except Exception:
-                pot_cycles_val = 0
-            try:
+                
+                tsn_cycles_val = int(self.tsn_cycles.text().strip()) if self.tsn_cycles.text().strip() else 0
                 install_cycles_val = int(self.install_cycles.text().strip()) if self.install_cycles.text().strip() else 0
+                
             except Exception:
-                install_cycles_val = 0
+                pass
+                
 
             total_hours_db, total_cycles_db = (0.0, 0)
             if immat:
                 total_hours_db, total_cycles_db = self._get_heures_cycles_from_heures_vol(immat)
-
-            remaining_cycles = pot_cycles_val - (install_cycles_val + total_cycles_db)
-            self.pot_restant_cycles.setText(str(remaining_cycles))
+                
+                
+                
+            # remaining_cycles = pot_cycles_val - (tsn_cycles_val + install_cycles_val)
+            if tsn_cycles_val > install_cycles_val:
+                # formula = f"{pot_cycles_val - (tsn_cycles_val - install_cycles_val)} = {pot_cycles_val - (tsn_cycles_val - install_cycles_val)}"
+                
+                self.pot_restant_cycles.setText(f"{pot_cycles_val - (tsn_cycles_val - install_cycles_val)}")
+            else:
+                self.pot_restant_cycles.setText("Tsn Cycles doit etres superieur a la valeur cycles installations")
+                
         except Exception:
             pass
+        # compute_all will assemble full summary
 
     def compute_all(self):
         # perform calculations
+        # TSN depends on immatriculation and heures_vol; update first
+        self.calcul_tsn_hours()
         self.compute_date_revision()
         self.compute_pot_restants()
         self.compute_pot_restants_cycles()
@@ -536,10 +643,10 @@ class Helices(QFrame):
             pot_months = None
         pot_hours = self.pot_hours.text().strip()
         pot_cycles_text = self.pot_cycles.text().strip()
-        try:
-            pot_cycles = int(pot_cycles_text) if pot_cycles_text else None
-        except ValueError:
-            pot_cycles = None
+        # try:
+        pot_cycles = int(pot_cycles_text) if pot_cycles_text else None
+        # except ValueError:
+        #     pot_cycles = None
         # prochaines revision
         date_rev = self.dates_revision.date().toString("yyyy-MM-dd")
         pot_restant = self.pot_restant.text().strip()
@@ -810,6 +917,8 @@ class Helices(QFrame):
         self.edit_mode = False
         self.current_edit_immat = None
         self.current_edit_date_rev = None
+        # recompute derived values after reset
+        self.compute_all()
         
     def ajouter_helices(self):
         self.reset_form()
@@ -821,3 +930,14 @@ class Helices(QFrame):
         self.tableau_affichage.setVisible(True)
         self.frame_helices.hide()
         self.btn_action.hide()
+        
+    def apply_filter(self, text: str):
+        """Masque les lignes dont l'immatriculation ne contient pas le texte donné."""
+        term = text.strip().lower()
+        for row in range(self.tableau_affichage.rowCount()):
+            item = self.tableau_affichage.item(row, 0)
+            if not term:
+                self.tableau_affichage.setRowHidden(row, False)
+            else:
+                show = bool(item and term in item.text().lower())
+                self.tableau_affichage.setRowHidden(row, not show)
