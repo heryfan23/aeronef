@@ -51,10 +51,12 @@ class Recapitulatifs(QFrame):
         self.filter_input.setCompleter(self.filter_completer)
         
         # tableau récapitulatif détaillé (lecture seule) : colonnes structurées
-        self.tableau_affichage = QTableWidget(20,8,self)
+        self.tableau_affichage = QTableWidget(20,10,self)
         self.tableau_affichage.setGeometry(10,110,1000,400)
         self.tableau_affichage.setHorizontalHeaderLabels([
             "Immatriculation",
+            "Ref ATA Moteurs",
+            "Ref ATA Hélices",
             "Infos Avion",
             "Dernier Vol",
             "Moteurs",
@@ -64,13 +66,15 @@ class Recapitulatifs(QFrame):
             "Comptes"
         ])
         self.tableau_affichage.setColumnWidth(0,120)
-        self.tableau_affichage.setColumnWidth(1,150)
-        self.tableau_affichage.setColumnWidth(2,120)
+        self.tableau_affichage.setColumnWidth(1,130)
+        self.tableau_affichage.setColumnWidth(2,130)
         self.tableau_affichage.setColumnWidth(3,150)
-        self.tableau_affichage.setColumnWidth(4,150)
-        self.tableau_affichage.setColumnWidth(5,120)
-        self.tableau_affichage.setColumnWidth(6,120)
+        self.tableau_affichage.setColumnWidth(4,120)
+        self.tableau_affichage.setColumnWidth(5,150)
+        self.tableau_affichage.setColumnWidth(6,150)
         self.tableau_affichage.setColumnWidth(7,120)
+        self.tableau_affichage.setColumnWidth(8,120)
+        self.tableau_affichage.setColumnWidth(9,120)
         # Style amélioré pour le tableau
         self.tableau_affichage.setStyleSheet("""
             QTableWidget {
@@ -103,7 +107,8 @@ class Recapitulatifs(QFrame):
         self.tableau_affichage.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tableau_affichage.itemSelectionChanged.connect(self.on_row_selected)
         self.tableau_affichage.cellDoubleClicked.connect(self.on_cell_double_clicked)
-        self.tableau_affichage.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tableau_affichage.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked)
+        self.tableau_affichage.cellChanged.connect(self.on_cell_changed)
         
         
         # Recapitulatif est lecture seule: on masque les commandes de saisie
@@ -265,6 +270,7 @@ class Recapitulatifs(QFrame):
                     self.conn.commit()
             except Exception:
                 pass
+            self._add_num_ref_ata_column()
         except Exception as e:
             print('Erreur initialisation DB:', e)
         
@@ -272,7 +278,20 @@ class Recapitulatifs(QFrame):
         self.load_immatriculations()
         self.load_recapitulatifs()
         self.selected_rows = []
-        
+    
+    def _add_num_ref_ata_column(self):
+        """Ajoute les colonnes num_ref_ata, ref_ata_moteurs, ref_ata_helices à la table aircrafts si elles n'existent pas"""
+        try:
+            self.cursor.execute("PRAGMA table_info(aircrafts)")
+            columns = [row[1] for row in self.cursor.fetchall()]
+            for col in ['num_ref_ata', 'ref_ata_moteurs', 'ref_ata_helices']:
+                if col not in columns:
+                    self.cursor.execute(f"ALTER TABLE aircrafts ADD COLUMN {col} TEXT")
+                    print(f"Colonne {col} ajoutée à aircrafts")
+            self.conn.commit()
+        except Exception as e:
+            print('Erreur ajout colonnes:', e)
+    
     def load_immatriculations(self):
         """Charge tous les matricules depuis la table aircrafts"""
         try:
@@ -339,10 +358,26 @@ class Recapitulatifs(QFrame):
 
         for idx, immat in enumerate(immats):
             self.full_data[idx] = immat
+            # Get ref_ata_moteurs, ref_ata_helices
+            try:
+                self.cursor.execute('SELECT ref_ata_moteurs, ref_ata_helices FROM aircrafts WHERE immatriculation=?', (immat,))
+                row = self.cursor.fetchone()
+                ref_moteurs = row[0] if row and row[0] else ""
+                ref_helices = row[1] if row and row[1] else ""
+            except Exception:
+                ref_moteurs = ""
+                ref_helices = ""
             data = self.build_detailed_data(immat)
             self.tableau_affichage.setItem(idx, 0, QTableWidgetItem(immat))
-            for col in range(1, 8):
-                item = QTableWidgetItem(data[col-1])
+            item_mot = QTableWidgetItem(ref_moteurs)
+            item_mot.setFlags(item_mot.flags() | Qt.ItemFlag.ItemIsEditable)
+            self.tableau_affichage.setItem(idx, 1, item_mot)
+            item_hel = QTableWidgetItem(ref_helices)
+            item_hel.setFlags(item_hel.flags() | Qt.ItemFlag.ItemIsEditable)
+            self.tableau_affichage.setItem(idx, 2, item_hel)
+            for col in range(3, 10):
+                item = QTableWidgetItem(data[col-3])
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 item.setData(Qt.ItemDataRole.UserRole, immat)
                 self.tableau_affichage.setItem(idx, col, item)
 
@@ -444,6 +479,34 @@ class Recapitulatifs(QFrame):
             pass
 
         return data
+    
+    def save_ref_ata(self, immat, dialog):
+        """Sauvegarde les ref ATA moteurs et helices"""
+        ref_moteurs = self.ref_moteurs_input.text().strip()
+        ref_helices = self.ref_helices_input.text().strip()
+        try:
+            self.cursor.execute('UPDATE aircrafts SET ref_ata_moteurs=?, ref_ata_helices=? WHERE immatriculation=?', (ref_moteurs, ref_helices, immat))
+            self.conn.commit()
+            QMessageBox.information(dialog, "Succès", "Références ATA sauvegardées.")
+        except Exception as e:
+            print('Erreur sauvegarde ref ATA:', e)
+            QMessageBox.warning(dialog, "Erreur", f"Erreur lors de la sauvegarde: {str(e)}")
+    
+    def on_cell_changed(self, row, col):
+        """Gère la modification de cellule pour sauvegarder les ref ATA"""
+        item = self.tableau_affichage.item(row, col)
+        if item:
+            immat = self.full_data.get(row)
+            try:
+                if col == 1:  # Ref ATA Moteurs column
+                    ref_mot = item.text().strip()
+                    self.cursor.execute('UPDATE aircrafts SET ref_ata_moteurs=? WHERE immatriculation=?', (ref_mot, immat))
+                elif col == 2:  # Ref ATA Hélices column
+                    ref_hel = item.text().strip()
+                    self.cursor.execute('UPDATE aircrafts SET ref_ata_helices=? WHERE immatriculation=?', (ref_hel, immat))
+                self.conn.commit()
+            except Exception as e:
+                print('Erreur sauvegarde ref ATA:', e)
 
     def save_recapitulatifs(self):
         """Sauvegarde les donnees du recapitulatif dans la base de donnees"""
@@ -536,7 +599,13 @@ class Recapitulatifs(QFrame):
         self.btn_action.hide()
 
     def on_cell_double_clicked(self, row, column):
-        """Show a detail dialog when a cell is double-clicked."""
+        """Show a detail dialog when a cell is double-clicked (except for Ref ATA columns)."""
+        # Colonnes 1 et 2 sont pour Ref ATA Moteurs et Hélices - permettre l'édition directe
+        if column in (1, 2):
+            # Laisser PyQt gérer l'édition
+            return
+        
+        # Pour les autres colonnes, afficher le dialogue de détails
         immat = self.tableau_affichage.item(row,0).text() if self.tableau_affichage.item(row,0) else None
         if immat:
             self.show_details(row)
@@ -580,7 +649,68 @@ class Recapitulatifs(QFrame):
         title_label.setStyleSheet("border-bottom: 2px solid #1976d2; padding-bottom: 5px;")
         layout.addWidget(title_label)
 
-        # show detailed information in a structured way
+        # Champs pour ref ATA moteurs et helices
+        try:
+            self.cursor.execute('SELECT ref_ata_moteurs, ref_ata_helices FROM aircrafts WHERE immatriculation=?', (immat,))
+            row = self.cursor.fetchone()
+            ref_moteurs = row[0] if row and row[0] else ""
+            ref_helices = row[1] if row and row[1] else ""
+        except Exception:
+            ref_moteurs = ""
+            ref_helices = ""
+
+        ref_layout = QHBoxLayout()
+        ref_layout.addWidget(QLabel("<font color='white'>Ref ATA Moteurs:</font>"))
+        self.ref_moteurs_input = QLineEdit(ref_moteurs)
+        self.ref_moteurs_input.setStyleSheet("""QLineEdit {
+            padding: 5px;
+            border: 1px solid #2196f3;
+            border-radius: 4px;
+            background-color: white;
+            color: #333;
+            font-size: 14px;
+        }
+        QLineEdit:focus {
+            border: 2px solid #1976d2;
+            background-color: #f0f8ff;
+        }""")
+        ref_layout.addWidget(self.ref_moteurs_input)
+        ref_layout.addWidget(QLabel("<font color='white'>Ref ATA Hélices:</font>"))
+        self.ref_helices_input = QLineEdit(ref_helices)
+        self.ref_helices_input.setStyleSheet("""QLineEdit {
+            padding: 5px;
+            border: 1px solid #2196f3;
+            border-radius: 4px;
+            background-color: white;
+            color: #333;
+            font-size: 14px;
+        }
+        QLineEdit:focus {
+            border: 2px solid #1976d2;
+            background-color: #f0f8ff;
+        }""")
+        ref_layout.addWidget(self.ref_helices_input)
+        layout.addLayout(ref_layout)
+
+        # Bouton sauvegarder
+        save_btn = QPushButton("Sauvegarder Ref ATA")
+        save_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4caf50;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """)
+        save_btn.clicked.connect(lambda: self.save_ref_ata(immat, dialog))
+        layout.addWidget(save_btn)
+
+        # afficher detailed information in a structured way
         detailed_data = self.build_detailed_data(immat)
         column_headers = ["Infos Avion", "Dernier Vol", "Moteurs", "Hélices", "Temps Vie", "Documents", "Comptes"]
 

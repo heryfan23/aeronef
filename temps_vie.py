@@ -59,8 +59,8 @@ class Temps_vie(QFrame):
             "Pot en mois",
             "Potentiel heures",
             "Potentiel cycles",
-            "Dates Proc rev",
-            "Pot restant",
+            "Dates Prochains revisions",
+            "Pot restant (heures)",
             "Pot restant cycles",
             "Nom equipements",
             "Date calibration"
@@ -113,19 +113,20 @@ class Temps_vie(QFrame):
         self.immatriculation_input = QComboBox(self.frame_temps)
         self.immatriculation_input.setGeometry(250, 19, 250, 35)
         self.immatriculation_input.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
+        self.immatriculation_input.currentTextChanged.connect(self.update_totals_from_immat)
         
         # cellule totals
-        self.heures_total = QLabel("Total heures Cellule:", self.frame_temps)
-        self.heures_total.setGeometry(20, 60, 250, 30)
-        self.heures_total.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
+        self.heures_total_label = QLabel("Total heures Cellule:", self.frame_temps)
+        self.heures_total_label.setGeometry(20, 60, 250, 30)
+        self.heures_total_label.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
         
         self.heures_total = QLineEdit(self.frame_temps)
         self.heures_total.setGeometry(250, 60, 250, 30)
         self.heures_total.setStyleSheet("background-color: white;border:1px solid black;color:black;padding:5px;font-size:15px")
         
-        self.cycles = QLabel("Nbr tot cycle Cellule:", self.frame_temps)
-        self.cycles.setGeometry(20, 100, 250, 30)
-        self.cycles.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
+        self.cycles_label = QLabel("Nbr tot cycle Cellule:", self.frame_temps)
+        self.cycles_label.setGeometry(20, 100, 250, 30)
+        self.cycles_label.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
         
         self.cycles = QLineEdit(self.frame_temps)
         self.cycles.setGeometry(250, 100, 250, 30)
@@ -217,12 +218,13 @@ class Temps_vie(QFrame):
         self.dates_proc_rev.setDisplayFormat("yyyy-MM-dd")
         self.dates_proc_rev.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
         
-        self.pot_restant_label = QLabel("Pot restant:", self.frame_temps)
+        self.pot_restant_label = QLabel("Pot restant (heures):", self.frame_temps)
         self.pot_restant_label.setGeometry(550, 170, 250, 30)
         self.pot_restant_label.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
         self.pot_restant = QLineEdit(self.frame_temps)
         self.pot_restant.setGeometry(750, 170, 200, 30)
         self.pot_restant.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
+        self.pot_restant.setReadOnly(True)
         
         self.pot_restant_cycles_label = QLabel("Pot restant cycles:", self.frame_temps)
         self.pot_restant_cycles_label.setGeometry(550, 220, 250, 30)
@@ -230,6 +232,7 @@ class Temps_vie(QFrame):
         self.pot_restant_cycles = QLineEdit(self.frame_temps)
         self.pot_restant_cycles.setGeometry(750, 220, 200, 30)
         self.pot_restant_cycles.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
+        self.pot_restant_cycles.setReadOnly(True)
         
         # right side equipment fields similar to moteurs
         self.nom_equipements_label = QLabel("Nom equipements:", self.frame_temps)
@@ -263,6 +266,14 @@ class Temps_vie(QFrame):
         self.enregistrer.clicked.connect(self.save_temps)
 
         self.frame_temps.hide()
+        
+        # Connect signals for automatic calculations
+        self.date_installation.dateChanged.connect(self.compute_date_revision)
+        self.pot_months.textChanged.connect(self.compute_date_revision)
+        self.heure_inst.textChanged.connect(self.compute_pot_restants)
+        self.potentiel_heures.textChanged.connect(self.compute_pot_restants)
+        self.nombre_cycles_input.textChanged.connect(self.compute_pot_restants_cycles)
+        self.potentiel_cycles.textChanged.connect(self.compute_pot_restants_cycles)
         
         # Initialise la base SQLite
         try:
@@ -304,6 +315,103 @@ class Temps_vie(QFrame):
         self.load_immatriculations()
         self.load_temps()
         self.selected_rows = []
+    
+    def _parse_hours_str_to_float(self, s):
+        """Parse un champ heures qui peut être 'hh:mm' ou un nombre décimal/entier.
+        Retourne les heures en float."""
+        try:
+            if not s:
+                return 0.0
+            s = str(s).strip()
+            if ':' in s:
+                parts = s.split(':')
+                h = float(parts[0])
+                m = float(parts[1]) if len(parts) > 1 else 0.0
+                return h + m / 60.0
+            # otherwise try to parse float
+            return float(s)
+        except Exception:
+            return 0.0
+    
+    def _format_hours_to_str(self, hours_float: float) -> str:
+        """Retourne une chaîne "hh:mm" à partir d'un nombre d'heures en float.
+        Arrondit les minutes au plus proche entier.
+        """
+        try:
+            h = int(hours_float)
+            m = int(round((hours_float - h) * 60))
+            if m == 60:
+                h += 1
+                m = 0
+            return f"{h}:{m:02d}"
+        except Exception:
+            return "0:00"
+    
+    def _get_heures_cycles_from_heures_vol(self, immat):
+        """Récupère la somme des heures (en heures float) et des cycles pour une immatriculation depuis heures_vol."""
+        try:
+            self.cursor.execute('SELECT temps_vol, cycles FROM heures_vol WHERE immatriculation=?', (immat,))
+            rows = self.cursor.fetchall()
+        except Exception:
+            return 0.0, 0
+
+        total_hours = 0.0
+        total_cycles = 0
+        for temps, cycles in rows:
+            # temps peut être 'hh:mm' ou une valeur numérique
+            total_hours += self._parse_hours_str_to_float(temps)
+            try:
+                total_cycles += int(cycles) if cycles is not None and str(cycles).strip() != '' else 0
+            except Exception:
+                pass
+
+        return total_hours, total_cycles
+    
+    def update_totals_from_immat(self, immat):
+        """Met à jour les champs total heures et cycles en fonction de l'immatriculation sélectionnée.
+        Calcule : base = heures_total/cycles_total dans la table aircrafts
+        + totaux provenant de heures_vol pour la même immatriculation.
+        """
+        if not immat:
+            self.heures_total.setText("")
+            self.cycles.setText("")
+            return
+        
+        # récupérer heures/cycles de la fiche aéronef
+        try:
+            self.cursor.execute(
+                "SELECT heures_total, cycles_total FROM aircrafts WHERE immatriculation=?",
+                (immat,)
+            )
+            row = self.cursor.fetchone()
+        except Exception:
+            row = None
+
+        base_hours = 0.0
+        base_cycles = 0
+        if row:
+            if row[0]:
+                base_hours = self._parse_hours_str_to_float(row[0])
+            try:
+                base_cycles = int(row[1]) if row[1] is not None and str(row[1]).strip() != "" else 0
+            except Exception:
+                base_cycles = 0
+
+        # totaux depuis heures_vol
+        total_hv, total_cy = self._get_heures_cycles_from_heures_vol(immat)
+
+        total_h = base_hours + total_hv
+        total_c = base_cycles + total_cy
+
+        # mettre à jour les champs
+        try:
+            self.heures_total.setText(self._format_hours_to_str(total_h))
+        except Exception:
+            self.heures_total.setText("")
+        try:
+            self.cycles.setText(str(total_c))
+        except Exception:
+            self.cycles.setText("")
     
     def _add_missing_columns(self):
         """Ajoute les colonnes manquantes à la table temps_vie si elles n'existent pas"""
@@ -362,9 +470,9 @@ class Temps_vie(QFrame):
         try:
             self.cursor.execute(
                 'SELECT id, immatriculation, total_heures_cellule, nbr_tot_cycles_cellule, '
-                'num_ref_ata, description, action, ref_docs, date_installation, heure_inst, pot_months, '
+                'num_ref_ata, description, action, ref_docs, date_installation, heure_inst, nombre_cycles_input, pot_months, '
                 'potentiel_heures, potentiel_cycles, dates_proc_rev, pot_restant, pot_restant_cycles, '
-                'nom_equipements, nombre_cycles_input, date_calibration '
+                'nom_equipements, date_calibration '
                 'FROM temps_vie ORDER BY immatriculation DESC'
             )
             rows = self.cursor.fetchall()
@@ -387,6 +495,37 @@ class Temps_vie(QFrame):
                 item.setData(Qt.ItemDataRole.UserRole, row[0])
                 self.tableau_affichage.setItem(idx, col, item)
     
+    def compute_date_revision(self):
+        """Calcule automatiquement la date de prochaine révision : date_installation + pot_months"""
+        try:
+            date_install = self.date_installation.date()
+            pot_months_text = self.pot_months.text().strip()
+            pot_months = int(pot_months_text) if pot_months_text else 0
+            new_date = date_install.addMonths(pot_months)
+            self.dates_proc_rev.setDate(new_date)
+        except Exception as e:
+            print('Erreur calcul date revision:', e)
+    
+    def compute_pot_restants(self):
+        """Calcule automatiquement le potentiel restant heures : heure_inst + potentiel_heures"""
+        try:
+            inst_h = self._parse_hours_str_to_float(self.heure_inst.text().strip())
+            pot_h = self._parse_hours_str_to_float(self.potentiel_heures.text().strip())
+            restant_h = inst_h + pot_h
+            self.pot_restant.setText(self._format_hours_to_str(restant_h))
+        except Exception as e:
+            self.pot_restant.setText("")
+    
+    def compute_pot_restants_cycles(self):
+        """Calcule automatiquement le potentiel restant cycles : nombre_cycles_input + potentiel_cycles"""
+        try:
+            inst_c = int(self.nombre_cycles_input.text().strip()) if self.nombre_cycles_input.text().strip() else 0
+            pot_c = int(self.potentiel_cycles.text().strip()) if self.potentiel_cycles.text().strip() else 0
+            restant_c = inst_c + pot_c
+            self.pot_restant_cycles.setText(str(restant_c))
+        except Exception as e:
+            self.pot_restant_cycles.setText("")
+    
     def save_temps(self):
         """Sauvegarde les donnees du temps_vie dans la base de donnees"""
         immat = self.immatriculation_input.currentText().strip()
@@ -405,7 +544,7 @@ class Temps_vie(QFrame):
         pot_restant = self.pot_restant.text().strip()
         pot_restant_cycles = self.pot_restant_cycles.text().strip()
         nom_equipements = self.nom_equipements.text().strip()
-        nombre_cycles_input = self.nombre_cycles_input.date().toString("yyyy-MM-dd")
+        nombre_cycles_input = self.nombre_cycles_input.text().strip()
         date_calib = self.date_calibration.date().toString("yyyy-MM-dd")
         
         if not immat:
@@ -583,15 +722,18 @@ class Temps_vie(QFrame):
         self.nombre_cycles_input.setText(nombre_cycles_input)
         self.date_calibration.setDate(QDate.fromString(date_calib, "yyyy-MM-dd"))
         
+        # Get the ID for unique update
+        row_id = self.tableau_affichage.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        
         # Changer le titre et le comportement du formulaire
         self.enregistrer.setText("Mettre a jour")
         self.enregistrer.disconnect()
-        self.enregistrer.clicked.connect(lambda: self.update_temps(immat, date_calib))
+        self.enregistrer.clicked.connect(lambda: self.update_temps(row_id))
         
         self.tableau_affichage.setVisible(False)
         self.frame_temps.show()
     
-    def update_temps(self, immat, dates_calib_original):
+    def update_temps(self, row_id):
         total_heures = self.heures_total.text().strip()
         nbr_cycles = self.cycles.text().strip()
         num_ref = self.num_ref_ata.text().strip()
@@ -612,8 +754,8 @@ class Temps_vie(QFrame):
         
         try:
             self.cursor.execute(
-                'UPDATE temps_vie SET total_heures_cellule=?, nbr_tot_cycles_cellule=?, num_ref_ata=?, description=?, action=?, ref_docs=?, date_installation=?, heure_inst=?, pot_months=?, potentiel_heures=?, potentiel_cycles=?, dates_proc_rev=?, pot_restant=?, pot_restant_cycles=?, nom_equipements=?, nombre_cycles_input=?, date_calibration=? WHERE immatriculation=? AND date_calibration=?',
-                (total_heures, nbr_cycles, num_ref, description, action, ref_docs, date_install, heure_inst, pot_months, potentiel_heures, potentiel_cycles, dates_proc_rev, pot_restant, pot_restant_cycles, nom_equipements, nombre_cycles_input, dates_calib, immat, dates_calib_original)
+                'UPDATE temps_vie SET total_heures_cellule=?, nbr_tot_cycles_cellule=?, num_ref_ata=?, description=?, action=?, ref_docs=?, date_installation=?, heure_inst=?, pot_months=?, potentiel_heures=?, potentiel_cycles=?, dates_proc_rev=?, pot_restant=?, pot_restant_cycles=?, nom_equipements=?, nombre_cycles_input=?, date_calibration=? WHERE id=?',
+                (total_heures, nbr_cycles, num_ref, description, action, ref_docs, date_install, heure_inst, pot_months, potentiel_heures, potentiel_cycles, dates_proc_rev, pot_restant, pot_restant_cycles, nom_equipements, nombre_cycles_input, dates_calib, row_id)
             )
             self.conn.commit()
         except Exception as e:
@@ -702,6 +844,10 @@ class Temps_vie(QFrame):
         self.reset_form()
         self.tableau_affichage.setVisible(False)
         self.frame_temps.show()
+        # Automatically select the first immatriculation to display totals
+        if self.immatriculation_input.count() > 0:
+            self.immatriculation_input.setCurrentIndex(0)
+            self.update_totals_from_immat(self.immatriculation_input.currentText())
         
     def voir_listes_temps(self):
         self.load_temps()
