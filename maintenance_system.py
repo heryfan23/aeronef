@@ -35,6 +35,7 @@ class MaintenanceAutomationSystem:
         self.db = db_manager if db_manager else DatabaseManager()
     
     def convert_time_to_hours(self, time_str: str) -> float:
+        
         """Convertit un temps au format hh:mm en heures décimales"""
         try:
             if ':' in time_str:
@@ -202,24 +203,235 @@ Propriétaire: {aircraft_info.get('proprietaire', 'N/A') if aircraft_info else '
         return estimations
     
     def get_critical_alerts(self, immatriculation: str = None) -> List[Dict]:
-        """Récupère uniquement les alertes critiques ou urgentes"""
+        """Récupère uniquement les alertes critiques ou urgentes
+        
+        Exclut les alertes traitées, fermées ou archivées.
+        """
         all_alerts = self.db.get_alerts_for_aircraft(immatriculation) if immatriculation \
                      else self.db.get_active_alerts()
         
         critical = []
         for alert in all_alerts:
-            if alert['statut'] == 'ACTIVE':
-                # Une alerte est critique si elle est activée depuis plus de 7 jours sans treatment
-                alert_date = datetime.strptime(alert['date_creation'], "%Y-%m-%d %H:%M:%S")
-                days_old = (datetime.now() - alert_date).days
-                
-                if days_old > 7:
-                    alert['urgence'] = "CRITIQUE"
-                elif days_old > 3:
-                    alert['urgence'] = "URGENT"
-                else:
-                    alert['urgence'] = "IMPORTANT"
-                
-                critical.append(alert)
+            # Filtrer les alertes actives (exclure TRAITEE, FERMEE, ARCHIVEE, etc.)
+            if alert['statut'] not in ('TRAITEE', 'FERMEE', 'ARCHIVEE', 'SUPPRIMEE'):
+                if alert['statut'] == 'ACTIVE':
+                    # Une alerte est critique si elle est activée depuis plus de 7 jours sans traitement
+                    alert_date = datetime.strptime(alert['date_creation'], "%Y-%m-%d %H:%M:%S")
+                    days_old = (datetime.now() - alert_date).days
+                    
+                    if days_old > 7:
+                        alert['urgence'] = "CRITIQUE"
+                    elif days_old > 3:
+                        alert['urgence'] = "URGENT"
+                    else:
+                        alert['urgence'] = "IMPORTANT"
+                    
+                    critical.append(alert)
         
         return critical
+    
+    def check_future_maintenance_alerts(self, immatriculation: str, current_hours: float, 
+                                       current_cycles: int = 0, hours_per_month: float = 50,
+                                       cycles_per_month: float = 20) -> List[Dict]:
+        """
+        NOUVELLE ALERTE: Vérifie les maintenances prévues dans 1 mois
+        
+        Déclenche une alerte si :
+        - Une maintenance sera atteinte dans 30 jours 
+        - Les heures restantes <= 20h
+        - Les cycles restants <= 20
+        
+        Args:
+            immatriculation: Immatriculation de l'aéronef
+            current_hours: Heures actuelles cumulées
+            current_cycles: Cycles actuels cumulés
+            hours_per_month: Estimation d'heures/mois (défaut 50)
+            cycles_per_month: Estimation de cycles/mois (défaut 20)
+            
+        Returns:
+            Liste des alertes futures créées
+        """
+        future_alerts = []
+        
+        try:
+            # Calculer les heures et cycles prévus dans 30 jours
+            estimated_hours_in_30d = current_hours + (hours_per_month)
+            estimated_cycles_in_30d = current_cycles + (cycles_per_month)
+            
+            print(f"📅 Vérification alertes futures pour {immatriculation}")
+            print(f"   Heures actuelles: {current_hours:.1f}h, Heures estimées +30j: {estimated_hours_in_30d:.1f}h")
+            print(f"   Cycles actuels: {current_cycles}, Cycles estimés +30j: {estimated_cycles_in_30d}")
+            
+            # Vérifier chaque seuil de maintenance
+            for threshold_name, threshold_hours in sorted(self.STANDARD_THRESHOLDS.items(), 
+                                                         key=lambda x: x[1]):
+                
+                # Vérifier si ce seuil sera atteint dans 30 jours
+                if current_hours < threshold_hours <= estimated_hours_in_30d:
+                    
+                    remaining_hours = threshold_hours - current_hours
+                    # Estimer les cycles restants (proportionnel aux heures restantes)
+                    remaining_cycles = max(0, int(estimated_cycles_in_30d - (threshold_hours - current_hours)))
+                    
+                    print(f"   ⚠️  Seuil {threshold_hours}h: heures restantes={remaining_hours:.1f}h, cycles restants~{remaining_cycles}")
+                    
+                    # ALERTE si: heures <= 20 ET cycles <= 20
+                    if remaining_hours <= 20 and remaining_cycles <= 20:
+                        alert_type = f"FUTURE_MAINTENANCE_{threshold_name}"
+                        description = f"""
+ALERTE MAINTENANCE FUTURE ({threshold_name})
+Maintenance prévue dans ~30 jours
+Heures restantes: {remaining_hours:.1f}h ({threshold_hours}h requis)
+Cycles restants estimés: {remaining_cycles}
+{self._get_maintenance_description(threshold_hours)}
+"""
+                        
+                        # Vérifier que cette alerte n'existe pas déjà
+                        existing_alerts = self.db.get_alerts_for_aircraft(immatriculation)
+                        existing_types = [a['type_alerte'] for a in existing_alerts if a['statut'] == 'ACTIVE']
+                        
+                        if alert_type not in existing_types:
+                            if self.db.create_alert(
+                                immatriculation,
+                                alert_type,
+                                threshold_hours,
+                                description
+                            ):
+                                future_alerts.append({
+                                    'type': alert_type,
+                                    'hours': threshold_hours,
+                                    'remaining_hours': remaining_hours,
+                                    'remaining_cycles': remaining_cycles,
+                                    'description': description,
+                                    'severity': "URGENTE_FUTURE",
+                                    'days_until': 30
+                                })
+                                print(f"   ✓ Alerte future créée pour {threshold_name}")
+                        else:
+                            print(f"   → Alerte {alert_type} déjà existante")
+            
+            return future_alerts
+            
+        except Exception as e:
+            print(f"❌ Erreur vérification alertes futures: {e}")
+            return []
+    
+    def check_moteurs_helices_alerts(self) -> List[Dict]:
+        """
+        ALERTE MOTEURS/HÉLICES: Génère des alertes depuis les tables moteurs et hélices
+        
+        Crée une alerte si les critères suivants sont remplis:
+        - pot_restant (heures) <= 20h
+        - pot_restant_cycles <= 50
+        - date_revision dans 30 jours
+        
+        Returns:
+            Liste des alertes créées
+        """
+        alerts_created = []
+        
+        try:
+            # Vérifier les moteurs
+            print("🔧 Vérification des alertes MOTEURS...")
+            alerts_created.extend(self._check_component_alerts('moteurs', 'MAINTENANCE_MOTEUR'))
+            
+            # Vérifier les hélices
+            print("✈️  Vérification des alertes HÉLICES...")
+            alerts_created.extend(self._check_component_alerts('helices', 'MAINTENANCE_HELICE'))
+            
+            return alerts_created
+            
+        except Exception as e:
+            print(f"❌ Erreur vérification moteurs/hélices: {e}")
+            return []
+    
+    def _check_component_alerts(self, table_name: str, alert_type_base: str) -> List[Dict]:
+        """
+        Vérifie les alertes pour un composant (moteur ou hélice)
+        
+        Args:
+            table_name: 'moteurs' ou 'helices'
+            alert_type_base: 'MAINTENANCE_MOTEUR' ou 'MAINTENANCE_HELICE'
+        """
+        alerts = []
+        
+        try:
+            self.db.cursor.execute(f'''
+                SELECT immatriculation, pot_restant, pot_restant_cycles, date_revision
+                FROM {table_name}
+                WHERE pot_restant IS NOT NULL AND pot_restant_cycles IS NOT NULL AND date_revision IS NOT NULL
+            ''')
+            
+            rows = self.db.cursor.fetchall()
+            print(f"  → {len(rows)} enregistrements trouvés dans {table_name}")
+            
+            for row in rows:
+                immat = row[0]
+                pot_restant = row[1]
+                pot_restant_cycles = row[2]
+                date_revision = row[3]
+                
+                # Convertir pot_restant en float
+                try:
+                    pot_restant_float = float(str(pot_restant).strip()) if pot_restant else 0
+                except:
+                    pot_restant_float = 0
+                
+                # Convertir pot_restant_cycles en int
+                try:
+                    pot_restant_cycles_int = int(str(pot_restant_cycles).strip()) if pot_restant_cycles else 0
+                except:
+                    pot_restant_cycles_int = 0
+                
+                # Vérifier si date est dans 30 jours
+                is_date_in_30days = False
+                try:
+                    if date_revision:
+                        date_revision_date = datetime.strptime(str(date_revision), "%Y-%m-%d").date()
+                        today = datetime.now().date()
+                        days_until = (date_revision_date - today).days
+                        is_date_in_30days = 0 <= days_until <= 30
+                except:
+                    pass
+                
+                # ALERTE si tous les critères sont remplis
+                if pot_restant_float <= 20 and pot_restant_cycles_int <= 50 and is_date_in_30days:
+                    alert_type = f"{alert_type_base}_{immat}"
+                    description = f"""
+ALERTE MAINTENANCE {table_name.upper()}
+Aéronef: {immat}
+Heures restantes: {pot_restant_float:.1f}h (maximum 20h)
+Cycles restants: {pot_restant_cycles_int} (maximum 50)
+Date révision: {date_revision}
+⚠️  MAINTENANCE URGENTE - À programmer immédiatement!
+"""
+                    
+                    # Vérifier l'alerte n'existe pas déjà (y compris les TRAITEE récentes)
+                    existing_alerts = self.db.get_alerts_for_aircraft(immat)
+                    existing_types = [a['type_alerte'] for a in existing_alerts if a['statut'] in ('ACTIVE', 'TRAITEE')]
+                    
+                    if alert_type not in existing_types:
+                        if self.db.create_alert(
+                            immat,
+                            alert_type,
+                            int(pot_restant_float),
+                            description
+                        ):
+                            alerts.append({
+                                'type': alert_type,
+                                'immat': immat,
+                                'pot_restant': pot_restant_float,
+                                'pot_restant_cycles': pot_restant_cycles_int,
+                                'date_revision': date_revision,
+                                'description': description,
+                                'severity': 'CRITIQUE'
+                            })
+                            print(f"  ✓ Alerte créée pour {immat} ({table_name})")
+                    else:
+                        print(f"  → Alerte déjà existante pour {immat}")
+            
+            return alerts
+            
+        except Exception as e:
+            print(f"❌ Erreur vérification {table_name}: {e}")
+            return []

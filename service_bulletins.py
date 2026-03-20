@@ -123,29 +123,26 @@ class ServicesBulletins(QFrame):
         self.date_app_label = QLabel("Date application:", self.frame_bulletin)
         self.date_app_label.setGeometry(20, 220, 300, 30)
         self.date_app_label.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
-        self.date_app_input = QDateEdit(self.frame_bulletin)
+        self.date_app_input = QLineEdit(self.frame_bulletin)
         self.date_app_input.setGeometry(300, 220, 300, 35)
-        self.date_app_input.setCalendarPopup(True)
         self.date_app_input.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
-        self.date_app_input.setDate(QDate.currentDate())
-        
+        self.date_app_input.setPlaceholderText("YYYY-MM-DD")
+
         self.date_real_label = QLabel("Date réalisation:", self.frame_bulletin)
         self.date_real_label.setGeometry(20, 270, 300, 30)
         self.date_real_label.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
-        self.date_real_input = QDateEdit(self.frame_bulletin)
+        self.date_real_input = QLineEdit(self.frame_bulletin)
         self.date_real_input.setGeometry(300, 270, 300, 35)
-        self.date_real_input.setCalendarPopup(True)
         self.date_real_input.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
-        self.date_real_input.setDate(QDate.currentDate())
+        self.date_real_input.setPlaceholderText("YYYY-MM-DD")
         
         self.date_proch_label = QLabel("Date prochaine échéance:", self.frame_bulletin)
         self.date_proch_label.setGeometry(20, 320, 300, 30)
         self.date_proch_label.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
-        self.date_proch_input = QDateEdit(self.frame_bulletin)
+        self.date_proch_input = QLineEdit(self.frame_bulletin)
         self.date_proch_input.setGeometry(300, 320, 300, 35)
-        self.date_proch_input.setCalendarPopup(True)
         self.date_proch_input.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
-        self.date_proch_input.setDate(QDate.currentDate())
+        self.date_proch_input.setPlaceholderText("YYYY-MM-DD")
         
         # après date prochaine échéance, on passe directement au bouton
         self.enregistrer = QPushButton("Enregistrer",self.frame_bulletin)
@@ -242,9 +239,9 @@ class ServicesBulletins(QFrame):
         ref_sbs = self.ref_sbs_input.text().strip()
         description = self.description_input.text().strip()
         statut = self.statut_combo.currentText()
-        date_application = self.date_app_input.date().toString("yyyy-MM-dd")
-        date_realisation = self.date_real_input.date().toString("yyyy-MM-dd")
-        date_prochaine = self.date_proch_input.date().toString("yyyy-MM-dd")
+        date_application = self.date_app_input.text().strip()
+        date_realisation = self.date_real_input.text().strip()
+        date_prochaine = self.date_proch_input.text().strip()
 
         if not immat:
             msg = QMessageBox(self)
@@ -381,11 +378,11 @@ class ServicesBulletins(QFrame):
         self.description_input.setText(description)
         self.statut_combo.setCurrentText(statut)
         if date_application:
-            self.date_app_input.setDate(QDate.fromString(date_application, "yyyy-MM-dd"))
+            self.date_app_input.setText(date_application)
         if date_realisation:
-            self.date_real_input.setDate(QDate.fromString(date_realisation, "yyyy-MM-dd"))
+            self.date_real_input.setText(date_realisation)
         if date_prochaine:
-            self.date_proch_input.setDate(QDate.fromString(date_prochaine, "yyyy-MM-dd"))
+            self.date_proch_input.setText(date_prochaine)
 
         # Changer le titre et le comportement du formulaire
         self.enregistrer.setText("Mettre a jour")
@@ -399,9 +396,9 @@ class ServicesBulletins(QFrame):
         ref_sbs = self.ref_sbs_input.text().strip()
         description = self.description_input.text().strip()
         statut = self.statut_combo.currentText()
-        date_application = self.date_app_input.date().toString("yyyy-MM-dd")
-        date_realisation = self.date_real_input.date().toString("yyyy-MM-dd")
-        date_prochaine = self.date_proch_input.date().toString("yyyy-MM-dd")
+        date_application = self.date_app_input.text().strip()
+        date_realisation = self.date_real_input.text().strip()
+        date_prochaine = self.date_proch_input.text().strip()
 
         try:
             self.cursor.execute(
@@ -475,9 +472,9 @@ class ServicesBulletins(QFrame):
         self.ref_sbs_input.clear()
         self.description_input.clear()
         self.statut_combo.setCurrentIndex(0)
-        self.date_app_input.setDate(QDate.currentDate())
-        self.date_real_input.setDate(QDate.currentDate())
-        self.date_proch_input.setDate(QDate.currentDate())
+        self.date_app_input.clear()
+        self.date_real_input.clear()
+        self.date_proch_input.clear()
         # no historique/reference to clear
         self.enregistrer.setText("Enregistrer")
         self.enregistrer.disconnect()

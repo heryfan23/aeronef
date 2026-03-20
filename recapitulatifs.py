@@ -3,6 +3,7 @@ from PyQt6.QtCore import QStringListModel, Qt
 from PyQt6.QtGui import QColor
 import sqlite3
 import os
+import re
 
 class Recapitulatifs(QFrame):
     def __init__(self, parent=None):
@@ -103,6 +104,7 @@ class Recapitulatifs(QFrame):
             }
         """)
         self.tableau_affichage.setAlternatingRowColors(True)
+        self.tableau_affichage.setWordWrap(True)
         self.tableau_affichage.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.tableau_affichage.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tableau_affichage.itemSelectionChanged.connect(self.on_row_selected)
@@ -186,17 +188,19 @@ class Recapitulatifs(QFrame):
         self.num_ref_ata_label = QLabel("Num ref ATA:", self.frame_recapitulatifs)
         self.num_ref_ata_label.setGeometry(20, 200, 150, 30)
         self.num_ref_ata_label.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
+        self.num_ref_ata_label.hide()
 
         self.num_ref_ata_input = QLineEdit(self.frame_recapitulatifs)
         self.num_ref_ata_input.setGeometry(300, 200, 300, 35)
         self.num_ref_ata_input.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
+        self.num_ref_ata_input.hide()
 
         self.comp_description_label = QLabel("Description composant:", self.frame_recapitulatifs)
-        self.comp_description_label.setGeometry(20, 250, 250, 30)
+        self.comp_description_label.setGeometry(20, 200, 250, 30)
         self.comp_description_label.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
 
         self.comp_description_input = QLineEdit(self.frame_recapitulatifs)
-        self.comp_description_input.setGeometry(300, 250, 300, 35)
+        self.comp_description_input.setGeometry(300, 200, 300, 35)
         self.comp_description_input.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
 
         self.date_proc_rev_label = QLabel("Date Proc Rev:", self.frame_recapitulatifs)
@@ -309,28 +313,25 @@ class Recapitulatifs(QFrame):
             print('Erreur chargement immatriculations:', e)
     
     def fill_date_proc_rev_from_temps_vie(self):
-        """Remplit automatiquement date_proc_rev, pot_restant et pot_restant_cycles avec les valeurs calculées depuis temps_vie"""
+        """Remplit date_proc_rev / pot_restant / pot_restant_cycles depuis temps_vie."""
         immat = self.immatriculation_input.currentText().strip()
-        
         if not immat:
             self.date_proc_rev_input.clear()
             self.pot_restant_input.clear()
             self.pot_restant_cycles_input.clear()
             return
-        
+
         try:
-            # Récupérer le dernier composant de temps_vie pour cette immatriculation
             self.cursor.execute(
                 'SELECT dates_proc_rev, pot_restant, pot_restant_cycles FROM temps_vie WHERE immatriculation=? ORDER BY rowid DESC LIMIT 1',
                 (immat,)
             )
             row = self.cursor.fetchone()
-            
             if row:
                 dates_proc_rev, pot_restant, pot_restant_cycles = row
                 self.date_proc_rev_input.setText(dates_proc_rev or "")
                 self.pot_restant_input.setText(pot_restant or "")
-                self.pot_restant_cycles_input.setText(pot_restant_cycles or "")
+                self.pot_restant_cycles_input.setText(str(pot_restant_cycles) if pot_restant_cycles is not None else "")
             else:
                 self.date_proc_rev_input.clear()
                 self.pot_restant_input.clear()
@@ -340,7 +341,127 @@ class Recapitulatifs(QFrame):
             self.date_proc_rev_input.clear()
             self.pot_restant_input.clear()
             self.pot_restant_cycles_input.clear()
+
+    def _parse_hours_value(self, value):
+        """Convertit une chaîne de type 'hh:mm' ou 'hh' en heures décimales.
+
+        Accepte aussi les formats contenant des caractères non numériques (ex: "16h", "16,5").
+        Retourne None si la conversion échoue.
+        """
+        if value is None:
+            return None
+        s = str(value).strip()
+        if not s:
+            return None
+
+        # Format hh:mm
+        if ':' in s:
+            parts = s.split(':')
+            if len(parts) == 2:
+                try:
+                    h = float(parts[0])
+                    m = float(parts[1])
+                    return h + m / 60.0
+                except Exception:
+                    return None
+
+        # Supprimer tout sauf chiffres, point, virgule, signe
+        import re
+        cleaned = re.sub(r"[^0-9.,-]", "", s)
+        cleaned = cleaned.replace(',', '.')
+        try:
+            return float(cleaned)
+        except Exception:
+            return None
     
+    def check_alert_criteria(self, immat: str) -> dict:
+        """Vérifie les critères d'alerte pour moteurs et hélices
+        
+        Alerte si AU MOINS UN critère est vrai:
+        - Heures restantes (pot_restant) <= 20h
+        - Cycles restants (pot_restant_cycles) <= 50
+        - Date de révision dans les 30 jours (1 mois)
+        
+        Retourne: {'moteurs': True/False, 'helices': True/False}
+        """
+        from datetime import datetime, timedelta
+        
+        alert_status = {'moteurs': False, 'helices': False}
+        
+        # Vérifier MOTEURS (boucle sur TOUTES les hélices)
+        try:
+            self.cursor.execute(
+                'SELECT pot_restant, pot_restant_cycles, date_revision FROM moteurs WHERE immatriculation=?',
+                (immat,)
+            )
+            motors = self.cursor.fetchall()
+            for pot_h, pot_c, date_rev in motors:
+                
+                # Convertir les valeurs (prise en charge des formats hh:mm ou '16h')
+                try:
+                    pot_h_float = self._parse_hours_value(pot_h)
+                    pot_c_int = int(str(pot_c).strip()) if pot_c else None
+                except:
+                    pot_h_float = None
+                    pot_c_int = None
+                
+                # Vérifier la date
+                date_in_30d = False
+                if date_rev:
+                    try:
+                        date_obj = datetime.strptime(str(date_rev), "%Y-%m-%d").date()
+                        days_until = (date_obj - datetime.now().date()).days
+                        date_in_30d = 0 <= days_until <= 30
+                    except:
+                        pass
+                
+                # Alerte si AU MOINS UN critère est vrai
+                if (pot_h_float is not None and pot_h_float <= 20) or \
+                   (pot_c_int is not None and pot_c_int <= 50) or \
+                   date_in_30d:
+                    alert_status['moteurs'] = True
+                    break  # Une seule alerte moteur suffit
+        except Exception as e:
+            pass
+        
+        # Vérifier HÉLICES (boucle sur TOUTES les hélices)
+        try:
+            self.cursor.execute(
+                'SELECT pot_restant, pot_restant_cycles, date_revision FROM helices WHERE immatriculation=?',
+                (immat,)
+            )
+            helices = self.cursor.fetchall()
+            for pot_h, pot_c, date_rev in helices:
+                
+                # Convertir les valeurs (prise en charge des formats hh:mm ou '16h')
+                try:
+                    pot_h_float = self._parse_hours_value(pot_h)
+                    pot_c_int = int(str(pot_c).strip()) if pot_c else None
+                except:
+                    pot_h_float = None
+                    pot_c_int = None
+                
+                # Vérifier la date
+                date_in_30d = False
+                if date_rev:
+                    try:
+                        date_obj = datetime.strptime(str(date_rev), "%Y-%m-%d").date()
+                        days_until = (date_obj - datetime.now().date()).days
+                        date_in_30d = 0 <= days_until <= 30
+                    except:
+                        pass
+                
+                # Alerte si AU MOINS UN critère est vrai
+                if (pot_h_float is not None and pot_h_float <= 20) or \
+                   (pot_c_int is not None and pot_c_int <= 50) or \
+                   date_in_30d:
+                    alert_status['helices'] = True
+                    break  # Une seule alerte hélice suffit
+        except Exception as e:
+            pass
+        
+        return alert_status
+
     def load_recapitulatifs(self):
         """Construire un récapitulatif global en agrégeant les autres tables."""
         try:
@@ -356,32 +477,69 @@ class Recapitulatifs(QFrame):
         self.tableau_affichage.setRowCount(row_count)
         self.tableau_affichage.clearContents()
 
+        print("\n🔍 Vérification des alertes moteurs/hélices...")
         for idx, immat in enumerate(immats):
             self.full_data[idx] = immat
-            # Get ref_ata_moteurs, ref_ata_helices
-            try:
-                self.cursor.execute('SELECT ref_ata_moteurs, ref_ata_helices FROM aircrafts WHERE immatriculation=?', (immat,))
-                row = self.cursor.fetchone()
-                ref_moteurs = row[0] if row and row[0] else ""
-                ref_helices = row[1] if row and row[1] else ""
-            except Exception:
-                ref_moteurs = ""
-                ref_helices = ""
-            data = self.build_detailed_data(immat)
+            # Définir automatiquement les références ATA
+            ref_moteurs = "72"  # Valeur fixe pour moteurs
+            ref_helices = "61"   # Valeur fixe pour hélices
+            
+            # Vérifier les critères d'alerte
+            alert_status = self.check_alert_criteria(immat)
+            
+            data = self.build_detailed_data(immat, multi_line=False)
+            # Format des données pour l'affichage en tableau (une seule ligne par cellule)
+            table_data = [re.sub(r"\s*\n\s*", " | ", d.strip()) if d else "" for d in data]
+
             self.tableau_affichage.setItem(idx, 0, QTableWidgetItem(immat))
             item_mot = QTableWidgetItem(ref_moteurs)
-            item_mot.setFlags(item_mot.flags() | Qt.ItemFlag.ItemIsEditable)
+            item_mot.setFlags(item_mot.flags() & ~Qt.ItemFlag.ItemIsEditable)  # Rendre non éditable
             self.tableau_affichage.setItem(idx, 1, item_mot)
             item_hel = QTableWidgetItem(ref_helices)
-            item_hel.setFlags(item_hel.flags() | Qt.ItemFlag.ItemIsEditable)
+            item_hel.setFlags(item_hel.flags() & ~Qt.ItemFlag.ItemIsEditable)  # Rendre non éditable
             self.tableau_affichage.setItem(idx, 2, item_hel)
+            
             for col in range(3, 10):
-                item = QTableWidgetItem(data[col-3])
+                item = QTableWidgetItem(table_data[col-3])
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 item.setData(Qt.ItemDataRole.UserRole, immat)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+
+                # NOTE: QTableWidgetItem does not support setTextFormat in PyQt6.
+                # Rich text rendering would require a custom delegate (QStyledItemDelegate) for the table.
+                
+                # Appliquer la coloration rouge du texte pour les alertes
+                # Colonne 5 (index 5) = Moteurs, Colonne 6 (index 6) = Hélices
+                # Si un critère est atteint, le texte devient rouge (et gras pour visibilité)
+                if col == 5 and alert_status['moteurs']:
+                    item.setForeground(QColor("#D32F2F"))
+                    font = item.font()
+                    font.setBold(True)
+                    item.setFont(font)
+                elif col == 6 and alert_status['helices']:
+                    item.setForeground(QColor("#D32F2F"))
+                    font = item.font()
+                    font.setBold(True)
+                    item.setFont(font)
+                
                 self.tableau_affichage.setItem(idx, col, item)
 
-    def build_detailed_data(self, immat: str) -> list:
+        # Ajuster la hauteur des lignes pour afficher les sauts de lignes correctement
+        self.tableau_affichage.resizeRowsToContents()
+
+    def format_hours_to_hhmm(self, hours_value):
+        """Convertit les heures décimales en format hh:mm"""
+        if not hours_value or hours_value == "":
+            return ""
+        try:
+            hours = float(hours_value)
+            hours_int = int(hours)
+            minutes = int((hours - hours_int) * 60)
+            return f"{hours_int:02d}:{minutes:02d}"
+        except (ValueError, TypeError):
+            return str(hours_value)
+
+    def build_detailed_data(self, immat: str, multi_line: bool = False) -> list:
         """Rassemble des informations détaillées de différentes tables pour une immatriculation, retourne une liste pour chaque colonne."""
         data = ["", "", "", "", "", "", ""]  # 7 colonnes de données
 
@@ -412,9 +570,9 @@ class Recapitulatifs(QFrame):
             pass
 
         try:
-            # Colonne 3: Moteurs
+            # Colonne 3: Moteurs (avec ATA prédéfini = 72 et tous les potentiels)
             self.cursor.execute(
-                'SELECT marque, numero_serie, pot_restant, pot_restant_cycles FROM moteurs '
+                'SELECT marque, numero_serie, pot_months, pot_hours, pot_cycles, pot_restant, pot_restant_cycles, date_revision FROM moteurs '
                 'WHERE immatriculation=?',
                 (immat,)
             )
@@ -422,15 +580,61 @@ class Recapitulatifs(QFrame):
             if motors:
                 motors_list = []
                 for m in motors:
-                    motors_list.append(f"{m[0]} N° série:{m[1]}\nPotentiel restant:\n{m[2]} heures\n{m[3]} cycles")
-                data[2] = "\n\n".join(motors_list)
-        except Exception:
+                    date_rev = m[7] if m[7] else "N/A"
+                    pot_restant_formatted = self.format_hours_to_hhmm(m[5])
+                    
+                    # Vérifier les critères d'alerte pour ce moteur
+                    alert_icon = ""
+                    try:
+                        pot_h = self._parse_hours_value(m[5])
+                        pot_c = None
+                        try:
+                            pot_c = int(str(m[6]).strip()) if m[6] is not None else None
+                        except Exception:
+                            pot_c = None
+
+                        # Vérifier la date
+                        from datetime import datetime
+                        date_in_30d = False
+                        if m[7]:
+                            try:
+                                date_obj = datetime.strptime(str(m[7]), "%Y-%m-%d").date()
+                                days = (date_obj - datetime.now().date()).days
+                                date_in_30d = 0 <= days <= 30
+                            except:
+                                pass
+
+                        # Si AU MOINS UN critère est true, ajouter l'alerte
+                        if (pot_h is not None and pot_h <= 20) or \
+                           (pot_c is not None and pot_c <= 50) or \
+                           date_in_30d:
+                            alert_icon = "⚠️ ALERTE! "
+                    except:
+                        pass
+                    
+                    if multi_line:
+                        motors_list.append(
+                            f"{alert_icon}ATA: 72\n"
+                            f"Marque: {m[0]}\n"
+                            f"N° série: {m[1]}\n"
+                            f"Potentiel: {m[2]} mois / {m[3]} heures / {m[4]} cycles\n"
+                            f"Date Proc rev: {date_rev} \n"
+                            f"Potentiel restant heures: {pot_restant_formatted}h\n"
+                            f"Potentiel restant cycles: {m[6]}c\n"
+                        )
+                    else:
+                        motors_list.append(
+                            f"{alert_icon}ATA 72: Marque {m[0]} N° série {m[1]} Potentiel {m[2]}m/{m[3]}h/{m[4]}c Potentiel restant heures {pot_restant_formatted}h Potentiel restant cycles {m[6]}c Date proc rev: {date_rev}"
+                        )
+                data[2] = ("\n\n" if multi_line else "\n").join(motors_list)
+        except Exception as e:
+            print(f"Erreur moteurs: {e}")
             pass
 
         try:
-            # Colonne 4: Hélices
+            # Colonne 4: Hélices (avec ATA prédéfini = 61 et tous les potentiels)
             self.cursor.execute(
-                'SELECT marque, numero_serie, pot_restant, pot_restant_cycles FROM helices '
+                'SELECT marque, numero_serie, pot_months, pot_hours, pot_cycles, pot_restant, pot_restant_cycles, date_revision FROM helices '
                 'WHERE immatriculation=?',
                 (immat,)
             )
@@ -438,21 +642,82 @@ class Recapitulatifs(QFrame):
             if props:
                 props_list = []
                 for p in props:
-                    props_list.append(f"{p[0]} N° série:{p[1]}\nPotentiel restant:\n{p[2]} heures\n{p[3]} cycles")
-                data[3] = "\n\n".join(props_list)
-        except Exception:
+                    date_rev = p[7] if p[7] else "N/A"
+                    pot_restant_formatted = self.format_hours_to_hhmm(p[5])
+                    
+                    # Vérifier les critères d'alerte pour cette hélice
+                    alert_icon = ""
+                    try:
+                        pot_h = self._parse_hours_value(p[5])
+                        pot_c = None
+                        try:
+                            pot_c = int(str(p[6]).strip()) if p[6] is not None else None
+                        except Exception:
+                            pot_c = None
+
+                        # Vérifier la date
+                        from datetime import datetime
+                        date_in_30d = False
+                        if p[7]:
+                            try:
+                                date_obj = datetime.strptime(str(p[7]), "%Y-%m-%d").date()
+                                days = (date_obj - datetime.now().date()).days
+                                date_in_30d = 0 <= days <= 30
+                            except:
+                                pass
+
+                        # Si AU MOINS UN critère est true, ajouter l'alerte
+                        if (pot_h is not None and pot_h <= 20) or \
+                           (pot_c is not None and pot_c <= 50) or \
+                           date_in_30d:
+                            alert_icon = "⚠️ ALERTE! "
+                    except:
+                        pass
+                    
+                    if multi_line:
+                        props_list.append(
+                            f"{alert_icon}ATA: 61\n"
+                            f"Marque: {p[0]}\n"
+                            f"N° série: {p[1]}\n"
+                            f"Potentiel: {p[2]} mois / {p[3]} heures / {p[4]} cycles\n"
+                            f"Date Proc rev: {date_rev} \n"
+                            f"Potentiel restant heures: {pot_restant_formatted}h\n"
+                            f"Potentiel restant cycles: {p[6]}c\n"
+                        )
+                    else:
+                        props_list.append(
+                            f"{alert_icon}ATA 61: Marque {p[0]} N° série {p[1]} Potentiel {p[2]}m/{p[3]}h/{p[4]}c Potentiel restant heures {pot_restant_formatted}h Potentiel restant cycles {p[6]}c Date proc rev: {date_rev}"
+                        )
+                data[3] = ("\n\n" if multi_line else "\n").join(props_list)
+        except Exception as e:
+            print(f"Erreur hélices: {e}")
             pass
 
         try:
-            # Colonne 5: Temps de Vie
+            # Colonne 5: Temps de Vie avec tous les potentiels
             self.cursor.execute(
-                'SELECT pot_restant, pot_restant_cycles FROM temps_vie '
-                'WHERE immatriculation=? ORDER BY rowid DESC LIMIT 1',
+                'SELECT num_ref_ata, description, pot_months, potentiel_heures, potentiel_cycles, pot_restant, pot_restant_cycles, dates_proc_rev FROM temps_vie '
+                'WHERE immatriculation=? ORDER BY num_ref_ata',
                 (immat,)
             )
-            row = self.cursor.fetchone()
-            if row:
-                data[4] = f"Potentiel restant:\n{row[0]} heures\n{row[1]} cycles"
+            rows = self.cursor.fetchall()
+            if rows:
+                temps_list = []
+                for ata, desc, pot_m, pot_h, pot_c, pot_rest_h, pot_rest_c, dates_proc_rev in rows:
+                    if multi_line:
+                        temps_list.append(
+                            f"ATA: {ata}\n"
+                            f"Description: {desc}\n"
+                            f"Potentiel: {pot_m} mois / {pot_h} heures / {pot_c} cycles\n"
+                            f"Date proc rev: {dates_proc_rev}\n"
+                            f"Potentiel restant heures: {pot_rest_h}h\n"
+                            f"Potentiel restant cycles: {pot_rest_c}c\n"
+                        )
+                    else:
+                        temps_list.append(
+                            f"ATA {ata}: {desc} Potentiel {pot_m}m/{pot_h}h/{pot_c}c Potentiel restant heures {pot_rest_h}h Potentiel restant cycles {pot_rest_c}c Date proc rev: {dates_proc_rev}"
+                        )
+                data[4] = ("\n\n" if multi_line else "\n").join(temps_list)
         except Exception:
             pass
 
@@ -480,41 +745,23 @@ class Recapitulatifs(QFrame):
 
         return data
     
-    def save_ref_ata(self, immat, dialog):
-        """Sauvegarde les ref ATA moteurs et helices"""
-        ref_moteurs = self.ref_moteurs_input.text().strip()
-        ref_helices = self.ref_helices_input.text().strip()
-        try:
-            self.cursor.execute('UPDATE aircrafts SET ref_ata_moteurs=?, ref_ata_helices=? WHERE immatriculation=?', (ref_moteurs, ref_helices, immat))
-            self.conn.commit()
-            QMessageBox.information(dialog, "Succès", "Références ATA sauvegardées.")
-        except Exception as e:
-            print('Erreur sauvegarde ref ATA:', e)
-            QMessageBox.warning(dialog, "Erreur", f"Erreur lors de la sauvegarde: {str(e)}")
-    
     def on_cell_changed(self, row, col):
-        """Gère la modification de cellule pour sauvegarder les ref ATA"""
-        item = self.tableau_affichage.item(row, col)
-        if item:
-            immat = self.full_data.get(row)
-            try:
-                if col == 1:  # Ref ATA Moteurs column
-                    ref_mot = item.text().strip()
-                    self.cursor.execute('UPDATE aircrafts SET ref_ata_moteurs=? WHERE immatriculation=?', (ref_mot, immat))
-                elif col == 2:  # Ref ATA Hélices column
-                    ref_hel = item.text().strip()
-                    self.cursor.execute('UPDATE aircrafts SET ref_ata_helices=? WHERE immatriculation=?', (ref_hel, immat))
-                self.conn.commit()
-            except Exception as e:
-                print('Erreur sauvegarde ref ATA:', e)
+        """Gère la modification de cellule - les colonnes ATA sont maintenant fixes"""
+        # Les colonnes 1 (Ref ATA Moteurs) et 2 (Ref ATA Hélices) sont maintenant fixes
+        # et ne peuvent plus être modifiées
+        if col in (1, 2):
+            # Restaurer les valeurs fixes
+            if col == 1:  # Ref ATA Moteurs
+                self.tableau_affichage.item(row, col).setText("72")
+            elif col == 2:  # Ref ATA Hélices
+                self.tableau_affichage.item(row, col).setText("61")
+            return
 
     def save_recapitulatifs(self):
         """Sauvegarde les donnees du recapitulatif dans la base de donnees"""
         immat = self.immatriculation_input.currentText().strip()
         types = self.types_.currentText().strip()
-        description = self.comp_description_input.text().strip()
         certifications = self.certifications.text().strip()
-        num_ref = self.num_ref_ata_input.text().strip()
         comp_desc = self.comp_description_input.text().strip()
         date_proc = self.date_proc_rev_input.text().strip()
         pot_rem = self.pot_restant_input.text().strip()
@@ -546,12 +793,12 @@ class Recapitulatifs(QFrame):
         try:
             self.cursor.execute(
                 '''INSERT INTO recapitulatifs (
-                        immatriculation, types, description, certifications,
-                        num_ref_ata, comp_description, date_proc_rev,
+                        immatriculation, types, certifications,
+                        comp_description, date_proc_rev,
                         pot_restant, pot_restant_cycles
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                (immat, types, description, certifications,
-                 num_ref, comp_desc, date_proc, pot_rem, pot_rem_cycles)
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                (immat, types, certifications,
+                 comp_desc, date_proc, pot_rem, pot_rem_cycles)
             )
             self.conn.commit()
         except Exception as e:
@@ -649,69 +896,18 @@ class Recapitulatifs(QFrame):
         title_label.setStyleSheet("border-bottom: 2px solid #1976d2; padding-bottom: 5px;")
         layout.addWidget(title_label)
 
-        # Champs pour ref ATA moteurs et helices
-        try:
-            self.cursor.execute('SELECT ref_ata_moteurs, ref_ata_helices FROM aircrafts WHERE immatriculation=?', (immat,))
-            row = self.cursor.fetchone()
-            ref_moteurs = row[0] if row and row[0] else ""
-            ref_helices = row[1] if row and row[1] else ""
-        except Exception:
-            ref_moteurs = ""
-            ref_helices = ""
-
-        ref_layout = QHBoxLayout()
-        ref_layout.addWidget(QLabel("<font color='white'>Ref ATA Moteurs:</font>"))
-        self.ref_moteurs_input = QLineEdit(ref_moteurs)
-        self.ref_moteurs_input.setStyleSheet("""QLineEdit {
-            padding: 5px;
-            border: 1px solid #2196f3;
-            border-radius: 4px;
-            background-color: white;
-            color: #333;
-            font-size: 14px;
-        }
-        QLineEdit:focus {
-            border: 2px solid #1976d2;
-            background-color: #f0f8ff;
-        }""")
-        ref_layout.addWidget(self.ref_moteurs_input)
-        ref_layout.addWidget(QLabel("<font color='white'>Ref ATA Hélices:</font>"))
-        self.ref_helices_input = QLineEdit(ref_helices)
-        self.ref_helices_input.setStyleSheet("""QLineEdit {
-            padding: 5px;
-            border: 1px solid #2196f3;
-            border-radius: 4px;
-            background-color: white;
-            color: #333;
-            font-size: 14px;
-        }
-        QLineEdit:focus {
-            border: 2px solid #1976d2;
-            background-color: #f0f8ff;
-        }""")
-        ref_layout.addWidget(self.ref_helices_input)
-        layout.addLayout(ref_layout)
-
-        # Bouton sauvegarder
-        save_btn = QPushButton("Sauvegarder Ref ATA")
-        save_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4caf50;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #45a049;
-            }
-        """)
-        save_btn.clicked.connect(lambda: self.save_ref_ata(immat, dialog))
-        layout.addWidget(save_btn)
+        # Affichage automatique des numéros ATA moteurs et hélices
+        # ref_layout = QHBoxLayout()
+        # ref_layout.addWidget(QLabel("<b>Ref ATA Moteurs:</b>"))
+        # ref_layout.addWidget(QLabel("<b style='color: #1976d2; font-size: 14px;'>72</b>"))
+        # ref_layout.addSpacing(30)
+        # ref_layout.addWidget(QLabel("<b>Ref ATA Hélices:</b>"))
+        # ref_layout.addWidget(QLabel("<b style='color: #1976d2; font-size: 14px;'>61</b>"))
+        # ref_layout.addStretch()
+        # layout.addLayout(ref_layout)
 
         # afficher detailed information in a structured way
-        detailed_data = self.build_detailed_data(immat)
+        detailed_data = self.build_detailed_data(immat, multi_line=True)
         column_headers = ["Infos Avion", "Dernier Vol", "Moteurs", "Hélices", "Temps Vie", "Documents", "Comptes"]
 
         for i, header in enumerate(column_headers):
@@ -736,41 +932,41 @@ class Recapitulatifs(QFrame):
             layout.addWidget(content_label)
 
         # retrieve any recapitulatifs records for this aircraft and show them
-        try:
-            self.cursor.execute(
-                'SELECT types, certifications, num_ref_ata, comp_description, date_proc_rev, pot_restant, pot_restant_cycles '
-                'FROM recapitulatifs WHERE immatriculation=?',
-                (immat,)
-            )
-            rec_rows = self.cursor.fetchall()
-            if rec_rows:
-                recap_header = QLabel(f"<b style='color: #1565c0; font-size: 14px;'>Récapitulatif(s) enregistrés :</b>")
-                recap_header.setStyleSheet("margin-top: 10px; margin-bottom: 2px;")
-                layout.addWidget(recap_header)
-                for rec in rec_rows:
-                    rec_text = (
-                        f"Type: {rec[0]}\n"
-                        f"Certifications: {rec[1]}\n"
-                        f"Num ref ATA: {rec[2]}\n"
-                        f"Description: {rec[3]}\n"
-                        f"Date Proc Rev: {rec[4]}\n"
-                        f"Pot restant: {rec[5]} h\n"
-                        f"Pot cycles: {rec[6]}"
-                    )
-                    rec_label = QLabel(rec_text)
-                    rec_label.setStyleSheet("""
-                        background-color: white;
-                        border: 1px solid #ddd;
-                        border-radius: 4px;
-                        padding: 8px;
-                        color: #333333;
-                        font-family: 'Segoe UI', Arial, sans-serif;
-                    """)
-                    rec_label.setWordWrap(True)
-                    rec_label.setMinimumHeight(60)
-                    layout.addWidget(rec_label)
-        except Exception:
-            pass
+        # try:
+        #     self.cursor.execute(
+        #         'SELECT types, certifications, num_ref_ata, comp_description, date_proc_rev, pot_restant, pot_restant_cycles '
+        #         'FROM recapitulatifs WHERE immatriculation=?',
+        #         (immat,)
+        #     )
+        #     rec_rows = self.cursor.fetchall()
+        #     if rec_rows:
+        #         recap_header = QLabel(f"<b style='color: #1565c0; font-size: 14px;'>Récapitulatif(s) enregistrés :</b>")
+        #         recap_header.setStyleSheet("margin-top: 10px; margin-bottom: 2px;")
+        #         layout.addWidget(recap_header)
+        #         for rec in rec_rows:
+        #             rec_text = (
+        #                 f"Type: {rec[0]}\n"
+        #                 f"Certifications: {rec[1]}\n"
+        #                 f"Num ref ATA: {rec[2]}\n"
+        #                 f"Description: {rec[3]}\n"
+        #                 f"Date Proc Rev: {rec[4]}\n"
+        #                 f"Pot restant: {rec[5]} h\n"
+        #                 f"Pot cycles: {rec[6]}"
+        #             )
+        #             rec_label = QLabel(rec_text)
+        #             rec_label.setStyleSheet("""
+        #                 background-color: white;
+        #                 border: 1px solid #ddd;
+        #                 border-radius: 4px;
+        #                 padding: 8px;
+        #                 color: #333333;
+        #                 font-family: 'Segoe UI', Arial, sans-serif;
+        #             """)
+        #             rec_label.setWordWrap(True)
+        #             rec_label.setMinimumHeight(60)
+        #             layout.addWidget(rec_label)
+        # except Exception:
+        #     pass
 
         # attempt graph with pot restant if available
         try:
@@ -892,31 +1088,19 @@ class Recapitulatifs(QFrame):
     
     def modifier_recapitulatifs(self, row, immat):
         # Recuperer les donnees de la ligne avec verification
-        # we have full_data stored earlier
         full = self.full_data.get(row, None)
         types = ""
-        description = ""
         certifications = ""
-        num_ref = ""
         comp_desc = ""
         date_proc = ""
         pot_rem = ""
         pot_rem_cycles = ""
-        if full:
-            # row format: (id, immat, types, description, cert, num_ref, comp_desc, date_proc, pot_rem, pot_rem_cycles)
-            _, _, types, description, certifications, num_ref, comp_desc, date_proc, pot_rem, pot_rem_cycles = full
-            # store id for update later
-            self._editing_id = full[0]
         
         # Remplir les champs du formulaire
         self.immatriculation_input.setCurrentText(immat)
-        self.types_.setCurrentText(types)
-        # description générale corresponds to "description" variable
-        self.comp_description_input.setText(description)
+        self.types_.setCurrentText(types if types else "Cellule")
         self.certifications.setText(certifications)
-        # nouveaux champs
-        self.num_ref_ata_input.setText(num_ref or "")
-        # comp_description_input is for component description
+        self.num_ref_ata_input.clear()
         self.comp_description_input.setText(comp_desc or "")
         self.date_proc_rev_input.setText(date_proc or "")
         self.pot_restant_input.setText(pot_rem or "")
@@ -932,9 +1116,7 @@ class Recapitulatifs(QFrame):
     
     def update_recapitulatifs(self, immat):
         types = self.types_.currentText().strip()
-        description = self.comp_description_input.text().strip()
         certifications = self.certifications.text().strip()
-        num_ref = self.num_ref_ata_input.text().strip()
         comp_desc = self.comp_description_input.text().strip()
         date_proc = self.date_proc_rev_input.text().strip()
         pot_rem = self.pot_restant_input.text().strip()
@@ -947,23 +1129,23 @@ class Recapitulatifs(QFrame):
                 # fallback to immatriculation update (older behaviour)
                 self.cursor.execute(
                     '''UPDATE recapitulatifs SET 
-                            types=?, description=?, certifications=?,
-                            num_ref_ata=?, comp_description=?, date_proc_rev=?,
+                            types=?, certifications=?,
+                            comp_description=?, date_proc_rev=?,
                             pot_restant=?, pot_restant_cycles=?
                        WHERE immatriculation=?''',
-                    (types, description, certifications,
-                     num_ref, comp_desc, date_proc,
+                    (types, certifications,
+                     comp_desc, date_proc,
                      pot_rem, pot_rem_cycles, immat)
                 )
             else:
                 self.cursor.execute(
                     '''UPDATE recapitulatifs SET 
-                            types=?, description=?, certifications=?,
-                            num_ref_ata=?, comp_description=?, date_proc_rev=?,
+                            types=?, certifications=?,
+                            comp_description=?, date_proc_rev=?,
                             pot_restant=?, pot_restant_cycles=?
                        WHERE id=?''',
-                    (types, description, certifications,
-                     num_ref, comp_desc, date_proc,
+                    (types, certifications,
+                     comp_desc, date_proc,
                      pot_rem, pot_rem_cycles, row_id)
                 )
             self.conn.commit()

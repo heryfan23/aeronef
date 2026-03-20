@@ -137,12 +137,13 @@ class Bilan(QFrame):
         self.date_prochain_inspection.setGeometry(20, 250, 300, 80)
         self.date_prochain_inspection.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
         
-        self.date_prochain_inspection = QDateEdit(self.frame_bilan)
+        self.date_prochain_inspection = QLineEdit(self.frame_bilan)
         self.date_prochain_inspection.setGeometry(300, 270, 300, 35)
         self.date_prochain_inspection.setStyleSheet("background-color: white; border:1px solid black;color:black;color:black;padding:5px;font-size:15px")
-        self.date_prochain_inspection.setDate(QDate.currentDate())
-        self.date_prochain_inspection.setCalendarPopup(True)
-        self.date_prochain_inspection.setDisplayFormat("yyyy-MM-dd")
+        self.date_prochain_inspection.setPlaceholderText("YYYY-MM-DD")
+        # self.date_prochain_inspection.setDate(QDate.currentDate())
+        # self.date_prochain_inspection.setCalendarPopup(True)
+        # self.date_prochain_inspection.setDisplayFormat("yyyy-MM-dd")
         
         self.enregistrer = QPushButton("Enregistrer",self.frame_bilan)
         self.enregistrer.setGeometry(600,370,200,40)
@@ -245,10 +246,10 @@ class Bilan(QFrame):
         """Sauvegarde les donnees du bilan dans la base de donnees"""
         immat = self.immatriculation_input.currentText().strip()
         types_inspection = self.types_inspection.currentText().strip()
-        date_dernier_inspection = self.date_dernier_inspection.dateTime().toString("yyyy-MM-dd HH:mm:ss")
+        date_dernier_inspection = self.date_dernier_inspection.date().toString("yyyy-MM-dd")
         heures_dernier = self.heures_dernier_input.text().strip()
         heures_prochains = self.heures_prochains.text().strip()
-        date_prochain = self.date_prochain_inspection.dateTime().toString("yyyy-MM-dd HH:mm:ss")
+        date_prochain = self.date_prochain_inspection.text().strip()
         
         if not immat:
             msg = QMessageBox(self)
@@ -380,16 +381,15 @@ class Bilan(QFrame):
         # Remplir les champs du formulaire
         self.immatriculation_input.setCurrentText(immat)
         self.types_inspection.setCurrentText(types_inspection)
-        self.date_dernier_inspection.setDateTime(
-            QDateTime(QDate.fromString(date_dernier_inspection.split()[0], "yyyy-MM-dd"), QTime())
-            if " " in date_dernier_inspection else QDateTime(QDate.currentDate(), QTime())
-        )
+        self.date_dernier_inspection.setDate(
+            QDate(QDate.fromString(date_dernier_inspection.split()[0], "yyyy-MM-dd")) if " " in date_dernier_inspection else QDate.currentDate())
         self.heures_dernier_input.setText(heures_dernier)
         self.heures_prochains.setText(heures_prochains)
-        self.date_prochain_inspection.setDateTime(
-            QDateTime(QDate.fromString(date_prochain.split()[0], "yyyy-MM-dd"), QTime())
-            if " " in date_prochain else QDateTime(QDate.currentDate(), QTime())
-        )
+        # self.date_prochain_inspection.setDateTime(
+        #     QDateTime(QDate.fromString(date_prochain.split()[0], "yyyy-MM-dd"), QTime())
+        #     if " " in date_prochain else QDateTime(QDate.currentDate(), QTime())
+        # )
+        self.date_prochain_inspection.setText(date_prochain)
         
         # Changer le titre et le comportement du formulaire
         self.enregistrer.setText("Mettre a jour")
@@ -401,10 +401,10 @@ class Bilan(QFrame):
     
     def update_bilan(self, immat):
         types_inspection = self.types_inspection.currentText().strip()
-        date_dernier_inspection = self.date_dernier_inspection.dateTime().toString("yyyy-MM-dd HH:mm:ss")
+        date_dernier_inspection = self.date_dernier_inspection.date().toString("yyyy-MM-dd")
         heures_dernier = self.heures_dernier_input.text().strip()
         heures_prochains = self.heures_prochains.text().strip()
-        date_prochain = self.date_prochain_inspection.dateTime().toString("yyyy-MM-dd HH:mm:ss")
+        date_prochain = self.date_prochain_inspection.text().strip()
         
         try:
             self.cursor.execute(
@@ -478,7 +478,8 @@ class Bilan(QFrame):
         self.heures_dernier_input.clear()
         self.heures_prochains.clear()
         self.date_dernier_inspection.setDate(QDate.currentDate())
-        self.date_prochain_inspection.setDate(QDate.currentDate())
+        self.date_prochain_inspection.clear()
+        self.immatriculation_input.setCurrentIndex(0)
         self.enregistrer.setText("Enregistrer")
         self.enregistrer.disconnect()
         self.enregistrer.clicked.connect(self.save_bilan)

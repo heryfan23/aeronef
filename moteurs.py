@@ -3,6 +3,7 @@ from PyQt6.QtCore import Qt, QDate, QStringListModel
 from PyQt6.QtGui import QColor
 import sqlite3
 import os
+from datetime import datetime, timedelta
 
 class Moteurs(QFrame):
     def __init__(self, parent=None):
@@ -128,12 +129,14 @@ class Moteurs(QFrame):
         self.tsn_hours = QLineEdit(self.frame_moteurs)
         self.tsn_hours.setStyleSheet("background-color: white; border:1px solid black; color:black; padding:5px; font-size:15px")
         self.tsn_hours.setGeometry(250, 170, 200, 30)
+        self.tsn_hours.setReadOnly(True)
         self.tsn_cycles_label = QLabel("TSN cycles:", self.frame_moteurs)
         self.tsn_cycles_label.setStyleSheet("color: black; font-size: 16px; background-color:none; font-weight:bold")
         self.tsn_cycles_label.setGeometry(10, 220, 250, 30)
         self.tsn_cycles = QLineEdit(self.frame_moteurs)
         self.tsn_cycles.setStyleSheet("background-color: white; border:1px solid black; color:black; padding:5px; font-size:15px")
         self.tsn_cycles.setGeometry(250, 220, 200, 30)
+        self.tsn_cycles.setReadOnly(True)
         
       
 
@@ -224,14 +227,16 @@ class Moteurs(QFrame):
         self.dates_revision.setDisplayFormat("yyyy-MM-dd")
         self.dates_revision.setStyleSheet("background-color: white; border:1px solid black; color:black; padding:5px; font-size:15px")
         self.dates_revision.setGeometry(700, 280, 200, 30)
+        self.dates_revision.setDisabled(True)
         
         self.pot_restant_label = QLabel("Pot restant:", self.frame_moteurs)
         self.pot_restant_label.setStyleSheet("color: black; font-size: 16px; background-color:none; font-weight:bold")
         self.pot_restant_label.setGeometry(500, 330, 200, 30)
         
         self.pot_restant = QLineEdit(self.frame_moteurs)
-        self.pot_restant.setStyleSheet("background-color: white; border:1px solid black; color:black; padding:5px; font-size:15px")
+        self.pot_restant.setStyleSheet("background-color: #f0f0f0; border:1px solid black; color:black; padding:5px; font-size:15px")
         self.pot_restant.setGeometry(700, 330, 200, 30)
+        self.pot_restant.setReadOnly(True)
       
         self.pot_restant_cycles_label = QLabel("Pot restant cycles:", self.frame_moteurs)
         self.pot_restant_cycles_label.setStyleSheet("color: black; font-size: 16px; background-color:none; font-weight:bold")
@@ -240,6 +245,7 @@ class Moteurs(QFrame):
         self.pot_restant_cycles = QLineEdit(self.frame_moteurs)
         self.pot_restant_cycles.setStyleSheet("background-color: white; border:1px solid black; color:black; padding:5px; font-size:15px")
         self.pot_restant_cycles.setGeometry(700, 370, 200, 30)
+        self.pot_restant_cycles.setDisabled(True)
      
         # save button
         self.enregistrer = QPushButton("Enregistrer",self.frame_moteurs)
@@ -353,7 +359,7 @@ class Moteurs(QFrame):
             print('Erreur chargement immatriculations:', e)
     
     def load_moteurs(self):
-        """Charge les moteurs depuis la base de donnees"""
+        """Charge les moteurs depuis la base de donnees avec alertes"""
         try:
             self.cursor.execute('''SELECT id, immatriculation, marque, numero_serie, tsn_hours, tsn_cycles, tso_hours, tso_cycles,
                                           date_installation, install_hours, install_cycles,
@@ -374,8 +380,50 @@ class Moteurs(QFrame):
         
         # Remplir avec les donnees (en sautant la colonne ID)
         for idx, row in enumerate(rows):
+            # Extraire les informations pour vérifier l'alerte
+            # Colonnes: id, immat, marque, serie, tsn_h, tsn_c, tso_h, tso_c,
+            #           date_inst, install_h, install_c, pot_months, pot_h, pot_c,
+            #           date_revision, pot_restant, pot_restant_cycles
+            
+            pot_restant = row[15]  # Colonne "Pot restant"
+            pot_restant_cycles = row[16]  # Colonne "Pot restant cycles"
+            date_revision_str = row[14]  # Colonne "Date prochaines revisions"
+            
+            # Convertir pot_restant en heures float
+            try:
+                pot_restant_float = float(str(pot_restant).strip()) if pot_restant else 0
+            except:
+                pot_restant_float = 0
+            
+            # Convertir pot_restant_cycles en integer
+            try:
+                pot_restant_cycles_int = int(str(pot_restant_cycles).strip()) if pot_restant_cycles else 0
+            except:
+                pot_restant_cycles_int = 0
+            
+            # Vérifier si date de révision est dans 30 jours
+            is_date_in_30days = False
+            try:
+                if date_revision_str:
+                    date_revision = datetime.strptime(str(date_revision_str), "%Y-%m-%d").date()
+                    today = datetime.now().date()
+                    days_until = (date_revision - today).days
+                    is_date_in_30days = 0 <= days_until <= 30
+            except:
+                pass
+            
+            # ALERTE: pot_restant <= 20h ET pot_restant_cycles <= 50 ET date in 30j
+            is_alert = (pot_restant_float <= 20 and 
+                       pot_restant_cycles_int <= 50 and 
+                       is_date_in_30days)
+            
+            alert_color = QColor("#FF6B6B") if is_alert else QColor("white")  # Rouge si alerte
+            
             for col, value in enumerate(row[1:]):  # Ignorer l'ID (index 0)
                 item = QTableWidgetItem(str(value))
+                item.setBackground(alert_color)
+                if is_alert:
+                    item.setForeground(QColor("white"))
                 # Stocker l'ID dans les donnees de l'item
                 item.setData(Qt.ItemDataRole.UserRole, row[0])
                 self.tableau_affichage.setItem(idx, col, item)
@@ -457,7 +505,7 @@ class Moteurs(QFrame):
             pass
 
     def compute_pot_restants(self):
-        """Calcule pot_restant = pot_hours - (install_hours + total_hours_from_heures_vol) et met à jour le champ."""
+        """Calcule pot_restant = pot_hours - (tsn_heures - install_hours) et met à jour le champ au format hh:mm."""
         try:
             immat = self.immatriculation_input.currentText().strip()
             pot_hours_val = self._parse_hours_str_to_float(self.pot_hours.text().strip())
@@ -468,14 +516,12 @@ class Moteurs(QFrame):
             if immat:
                 total_hours_db, _ = self._get_heures_cycles_from_heures_vol(immat)
 
-            # remaining = pot_hours_val - (install_hours_val + total_hours_db)
-            # show full formula in the field
-            if pot_hours_val == 0:
-                self.pot_restant.setText("0")
+            # pot_restant should reflect pot_hours - (tsn_heures - install_hours)
+            # (ignoring total_hours_db for now since tsn_heures already includes it)
+            if tsn_heures_val > install_hours_val:
+                remaining = pot_hours_val - (tsn_heures_val - install_hours_val)
+                self.pot_restant.setText(self._format_hours_to_str(remaining))
                 
-            if tsn_heures_val > install_hours_val :
-                # formula = f"{pot_hours_val} - ({tsn_heures_val} - {install_hours_val}) = {pot_hours_val - (tsn_heures_val - install_hours_val):.1f}"
-                self.pot_restant.setText(f"{pot_hours_val - (tsn_heures_val - install_hours_val):.1f}")
             else:
                 self.pot_restant.setText("TSN heures doit être supérieur à heures installation")
         except Exception:
@@ -662,6 +708,17 @@ class Moteurs(QFrame):
         self.dates_revision.setDate(QDate.currentDate())
         self.pot_restant.clear()
         self.pot_restant_cycles.clear()
+        
+        # Vérifier les alertes moteurs/hélices (maintenance_system)
+        try:
+            from maintenance_system import MaintenanceAutomationSystem
+            from database_manager import DatabaseManager
+            db = DatabaseManager()
+            maintenance_system = MaintenanceAutomationSystem(db)
+            maintenance_system.check_moteurs_helices_alerts()
+            print("✓ Vérification des alertes moteurs/hélices effectuée")
+        except Exception as e:
+            print(f"⚠️  Erreur vérification alertes: {e}")
         
         # Recharger le tableau
         self.load_moteurs()

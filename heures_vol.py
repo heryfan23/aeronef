@@ -320,104 +320,213 @@ class HeuresVol(QFrame):
         except (ValueError, AttributeError):
             return 0
     
-    def check_maintenance_alert(self, immat, temps_cumul_str):
-        """Vérifie si les heures de révision sont atteintes et déclenche les alertes automatiques - SYSTÈME AUTOMATISÉ"""
+    def calculate_total_hours_for_aircraft(self, immat, new_flight_hours=None):
+        """Calcule les heures TOTALES cumulées pour un aéronef (tous les vols)
+        
+        BUG FIX: Cette méthode assure que nous utilisons les heures TOTALES, 
+        pas seulement le dernier vol, pour vérifier les alertes de maintenance.
+        
+        Args:
+            immat: Immatriculation de l'aéronef
+            new_flight_hours: Heures du nouveau vol à ajouter (format hh:mm)
+            
+        Returns:
+            String format "HHh:MM" avec les heures cumulées totales
+        """
+        try:
+            # Récupérer tous les vols enregistrés pour cet aéronef
+            self.cursor.execute(
+                'SELECT temps_vol FROM heures_vol WHERE immatriculation = ? ORDER BY date_vol',
+                (immat,)
+            )
+            flights = self.cursor.fetchall()
+            
+            total_minutes = 0
+            
+            # Additionner tous les vols existants
+            for flight in flights:
+                if flight[0]:
+                    total_minutes += self.convert_time_to_minutes(flight[0])
+            
+            # Ajouter le nouveau vol s'il est fourni
+            if new_flight_hours:
+                total_minutes += self.convert_time_to_minutes(new_flight_hours)
+            
+            # Convertir en format hh:mm
+            hours = total_minutes // 60
+            minutes = total_minutes % 60
+            
+            result = f"{hours}:{minutes:02d}"
+            print(f"✓ Heures cumulées {immat}: {result} (total {hours}h{minutes}m)")
+            return result
+            
+        except Exception as e:
+            print(f"❌ Erreur calcul heures cumulées: {e}")
+            return new_flight_hours if new_flight_hours else "0:00"
+    
+    def calculate_total_cycles_for_aircraft(self, immat, new_cycles=None):
+        """Calcule les cycles TOTAUX cumulés pour un aéronef (tous les vols)
+        
+        Args:
+            immat: Immatriculation de l'aéronef
+            new_cycles: Cycles du nouveau vol à ajouter
+            
+        Returns:
+            Integer avec les cycles cumulés totaux
+        """
+        try:
+            # Récupérer tous les cycles enregistrés pour cet aéronef
+            self.cursor.execute(
+                'SELECT cycles FROM heures_vol WHERE immatriculation = ? ORDER BY date_vol',
+                (immat,)
+            )
+            flights = self.cursor.fetchall()
+            
+            total_cycles = 0
+            
+            # Additionner tous les cycles existants
+            for flight in flights:
+                if flight[0]:
+                    total_cycles += int(flight[0])
+            
+            # Ajouter les nouveaux cycles s'ils sont fournis
+            if new_cycles:
+                total_cycles += int(new_cycles) if isinstance(new_cycles, str) else new_cycles
+            
+            print(f"✓ Cycles cumulés {immat}: {total_cycles}")
+            return total_cycles
+            
+        except Exception as e:
+            print(f"❌ Erreur calcul cycles cumulés: {e}")
+            return 0
+    
+    def check_hours_exceed_total(self, immat, heures_cumulees_str):
+        """Vérifie si les heures cumulées dépassent le total déclaré dans aircrafts
+        
+        Si dépassement, crée une alerte spécifique dans la base de données.
+        
+        Args:
+            immat: Immatriculation
+            heures_cumulees_str: Heures cumulées au format "HH:MM"
+        """
+        try:
+            # Récupérer le total d'heures déclaré pour cet aéronef
+            self.cursor.execute(
+                'SELECT heures_total FROM aircrafts WHERE immatriculation = ?',
+                (immat,)
+            )
+            result = self.cursor.fetchone()
+            
+            if not result:
+                print(f"⚠️  {immat}: Aéronef non trouvé dans la table aircrafts")
+                return
+            
+            heures_total_str = result[0]
+            
+            # Convertir les heures en nombres décimaux pour comparaison
+            heures_cumulees = self.maintenance_automation.convert_time_to_hours(heures_cumulees_str)
+            
+            # Convertir le total déclaré
+            heures_total = self.maintenance_automation.convert_time_to_hours(heures_total_str) if heures_total_str else 0
+            
+            # Vérifier le dépassement
+            if heures_total > 0 and heures_cumulees > heures_total:
+                print(f"⚠️  ALERTE {immat}: Heures cumulées ({heures_cumulees:.1f}h) > Total déclaré ({heures_total:.1f}h)")
+                
+                # Créer une alerte dans la base de données
+                try:
+                    depassement = heures_cumulees - heures_total
+                    description = f"Heures de vol cumulées ({heures_cumulees:.1f}h) dépassent le total déclaré ({heures_total:.1f}h) de {depassement:.1f}h"
+                    
+                    # Vérifier si cette alerte existe déjà et est active
+                    existing = self.db_manager.get_alerts_for_aircraft(immat)
+                    alert_exists = any(a['type_alerte'] == 'HEURES_DEPASSEES' and a['statut'] == 'ACTIVE' for a in existing)
+                    
+                    if not alert_exists:
+                        self.db_manager.create_alert(
+                            immat,
+                            'HEURES_DEPASSEES',
+                            int(heures_cumulees),
+                            description
+                        )
+                        print(f"✓ Alerte HEURES_DEPASSEES créée pour {immat}")
+                except Exception as e:
+                    print(f"❌ Erreur création alerte HEURES_DEPASSEES: {e}")
+            
+            else:
+                print(f"✓ {immat}: Heures cumulées ({heures_cumulees:.1f}h) <= Total ({heures_total:.1f}h)")
+        
+        except Exception as e:
+            print(f"❌ Erreur vérification dépassement heures: {e}")
+    
+    def check_maintenance_alert(self, immat, temps_cumul_str, current_cycles=0, new_cycles_str=""):
+        """Vérifie les alertes de maintenance et les crée en base de données
+        
+        Vérifie et crée:
+        1. Alertes immédiates: heures > seuil
+        2. Alertes futures: maintenance d'ici 30 jours
+        
+        Les alertes sont sauvegardées en base de données et affichées 
+        dans le tableau de bord "Alertes & Maintenance".
+        
+        Args:
+            immat: Immatriculation
+            temps_cumul_str: Heures totales cumulées (format "HH:MM")
+            current_cycles: Cycles totaux actuels
+            new_cycles_str: Cycles du nouveau vol (string)
+            
+        Returns:
+            True si des alertes ont été créées/trouvées, False sinon
+        """
         try:
             # Convertir le temps cumul en heures décimales
             current_hours = self.maintenance_automation.convert_time_to_hours(temps_cumul_str)
             
-            # Vérifier et créer les alertes automatiquement
+            # Assurer que current_cycles est un integer
+            if isinstance(current_cycles, str):
+                current_cycles = int(current_cycles) if current_cycles else 0
+            
+            print(f"\n🔧 VÉRIFICATION MAINTENANCE {immat}")
+            print(f"   Heures: {temps_cumul_str} ({current_hours:.1f}h)")
+            print(f"   Cycles: {current_cycles}")
+            
+            # 1️⃣  Vérifier et créer les alertes IMMÉDIATES (heures > seuil)
+            print(f"\n1️⃣  Vérification alertes IMMÉDIATES...")
             new_alerts = self.maintenance_automation.check_and_trigger_alerts(immat, current_hours)
             
-            if new_alerts:
-                # Construire le message d'alerte professionnel
-                alert_text = f"""⚠️ ALERTES DE MAINTENANCE DÉTECTÉES
-
-AÉRONEF: {immat}
-HEURES ACCUMULÉES: {temps_cumul_str}
-═══════════════════════════════════════════
-
-"""
+            # 2️⃣  Vérifier les alertes FUTURES (maintenance d'ici 30 jours)
+            print(f"\n2️⃣  Vérification alertes FUTURES (d'ici 30j)...")
+            future_alerts = self.maintenance_automation.check_future_maintenance_alerts(
+                immat, 
+                current_hours,
+                current_cycles
+            )
+            
+            # Combiner les alertes
+            all_new_alerts = new_alerts + future_alerts
+            
+            if all_new_alerts:
+                immediate = [a for a in all_new_alerts if a['type'].startswith('MAINTENANCE_')]
+                futures = [a for a in all_new_alerts if a['type'].startswith('FUTURE_')]
                 
-                # Ajouter chaque alerte avec ses détails
-                for alert in new_alerts:
-                    alert_text += f"""
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔧 {alert['type'].replace('MAINTENANCE_', '')}: RÉVISION {alert['hours']}h
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Sévérité: {alert['severity']}
-Description: {alert['description']}
-"""
-                
-                # Ajouter le calendrier des prochaines maintenances
-                schedule = self.maintenance_automation.get_next_maintenance_schedule(immat, current_hours)
-                
-                alert_text += f"""
-
-═══════════════════════════════════════════
-CALENDRIER DES PROCHAINES MAINTENANCES
-═══════════════════════════════════════════
-"""
-                
-                # Afficher les 5 prochaines révisions
-                for item in schedule[:5]:
-                    alert_text += f"""
-
-📅 {item['seuil']}
-   Heures restantes: {item['heures_restantes']:.1f}h ({item['pourcentage']:.1f}%)
-   {item['description']}
-"""
-                
-                # Afficher le message d'alerte
-                alert_msg = QMessageBox(self)
-                alert_msg.setIcon(QMessageBox.Icon.Warning)
-                alert_msg.setWindowTitle("⚠️ ALERTES DE MAINTENANCE AUTOMATIQUES")
-                alert_msg.setText(alert_text)
-                alert_msg.setStyleSheet("""
-                    QMessageBox { 
-                        background-color: #2d2d69; 
-                    }
-                    QMessageBox QLabel { 
-                        color: white; 
-                        font-weight: bold; 
-                        font-family: 'Courier New';
-                    }
-                """)
-                alert_msg.setMinimumWidth(700)
-                alert_msg.setMinimumHeight(500)
-                alert_msg.exec()
-                
+                print(f"✓ Alertes créées en BD ({len(immediate)} immédiate(s), {len(futures)} future(s))")
+                print(f"ℹ️  Consultez le tableau de bord 'Alertes & Maintenance' pour les détails")
                 return True
             else:
-                # Vérifier s'il y a une alerte existante (pas de nouvelle)
+                # Vérifier s'il y a une alerte existante
                 existing_alerts = self.db_manager.get_alerts_for_aircraft(immat)
                 if existing_alerts:
-                    # Afficher un message informatif
-                    msg = QMessageBox(self)
-                    msg.setIcon(QMessageBox.Icon.Information)
-                    msg.setWindowTitle("ℹ️ Statut Maintenance")
-                    msg.setText(f"""Aéronef: {immat}
-Heures cumulées: {temps_cumul_str}
-
-Alertes actives: {len(existing_alerts)}
-
-Consultez le tableau de bord "Alertes & Maintenance" 
-pour plus de détails et pour planifier les révisions.""")
-                    msg.setStyleSheet("""
-                        QMessageBox { 
-                            background-color: #2d2d69; 
-                        }
-                        QMessageBox QLabel { 
-                            color: white; 
-                        }
-                    """)
-                    msg.exec()
+                    print(f"ℹ️  {immat}: Alertes existantes ({len(existing_alerts)} active(s))")
                     return True
+                else:
+                    print(f"✓ {immat}: Aucune alerte (heures: {current_hours:.1f}h, cycles: {current_cycles})")
             
             return False
         
         except Exception as e:
-            print(f'Erreur vérification maintenance automatique: {e}')
+            print(f'❌ Erreur vérification maintenance: {e}')
+            import traceback
+            traceback.print_exc()
             return False
     
     def save_heures(self):
@@ -459,9 +568,15 @@ pour plus de détails et pour planifier les révisions.""")
             return
         
         # Vérifier si les heures de révision sont atteintes
-        # On n'utilise plus le temps cumul
-        heures_check = temps_vol
-        self.check_maintenance_alert(immat, heures_check)
+        # Calculer les heures TOTALES cumulées pour cet aéronef (FIX BUG: pas seulement le dernier vol)
+        heures_cumulees = self.calculate_total_hours_for_aircraft(immat, temps_vol)
+        cycles_cumulees = self.calculate_total_cycles_for_aircraft(immat, cycles_str)
+        
+        # Vérifier si les heures cumulées dépassent le total déclaré (ALERTE SPÉCIFIQUE)
+        self.check_hours_exceed_total(immat, heures_cumulees)
+        
+        # Vérifier les alertes de maintenance (heures ET cycles totales)
+        self.check_maintenance_alert(immat, heures_cumulees, cycles_cumulees, cycles_str)
         
         # Persister les alertes créées
         if hasattr(self, 'db_manager'):
@@ -582,6 +697,9 @@ pour plus de détails et pour planifier les révisions.""")
         temps_vol = self.tableau_affichage.item(row, 2).text() if self.tableau_affichage.item(row, 2) else ""
         cycles = self.tableau_affichage.item(row, 3).text() if self.tableau_affichage.item(row, 3) else ""
         
+        # Récupérer l'ID unique de la ligne (stocké dans les données de l'item)
+        row_id = self.tableau_affichage.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        
         # Remplir les champs du formulaire
         self.immatriculation_input.setCurrentText(immat)
         self.date_vol.setDate(QDate.fromString(date_vol, "yyyy-MM-dd"))
@@ -592,12 +710,12 @@ pour plus de détails et pour planifier les révisions.""")
         self.titre.setText("Modifier les heures de vol")
         self.enregistrer.setText("Mettre à jour")
         self.enregistrer.disconnect()
-        self.enregistrer.clicked.connect(lambda: self.update_heures(immat, date_vol))
+        self.enregistrer.clicked.connect(lambda: self.update_heures(row_id))
         
         self.tableau_affichage.setVisible(False)
         self.frame_ajout_heure.show()
     
-    def update_heures(self, immat, date_vol_original):
+    def update_heures(self, row_id):
         date_vol = self.date_vol.date().toString("yyyy-MM-dd")
         temps_vol = self.temps_vol.text().strip()
         cycles_str = self.cycles_input.text().strip()
@@ -617,9 +735,10 @@ pour plus de détails et pour planifier les révisions.""")
             cycles = 0
         
         try:
+            # Utiliser l'ID unique pour éviter de modifier plusieurs lignes
             self.cursor.execute(
-                'UPDATE heures_vol SET date_vol=?, temps_vol=?, cycles=? WHERE immatriculation=? AND date_vol=?',
-                (date_vol, temps_vol, cycles, immat, date_vol_original)
+                'UPDATE heures_vol SET date_vol=?, temps_vol=?, cycles=? WHERE id=?',
+                (date_vol, temps_vol, cycles, row_id)
             )
             self.conn.commit()
         except Exception as e:

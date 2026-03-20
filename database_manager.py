@@ -129,16 +129,32 @@ class DatabaseManager:
             print(f"Erreur récupération alertes: {e}")
             return []
     
-    def get_alerts_for_aircraft(self, immatriculation: str) -> List[Dict]:
-        """Récupère les alertes d'un aéronef spécifique"""
+    def get_alerts_for_aircraft(self, immatriculation: str, include_treated: bool = False) -> List[Dict]:
+        """Récupère les alertes d'un aéronef spécifique
+        
+        Args:
+            immatriculation: L'immatriculation de l'aéronef
+            include_treated: Si False (défaut), exclut les alertes TRAITEE/FERMEE/ARCHIVEE
+        """
         try:
-            self.cursor.execute('''
-                SELECT id, immatriculation, type_alerte, seuil_heures, 
-                       date_creation, date_programmation, description, statut
-                FROM maintenance_alerts
-                WHERE immatriculation = ?
-                ORDER BY date_creation DESC
-            ''', (immatriculation,))
+            if include_treated:
+                # Inclure toutes les alertes
+                self.cursor.execute('''
+                    SELECT id, immatriculation, type_alerte, seuil_heures, 
+                           date_creation, date_programmation, description, statut
+                    FROM maintenance_alerts
+                    WHERE immatriculation = ?
+                    ORDER BY date_creation DESC
+                ''', (immatriculation,))
+            else:
+                # Exclure les alertes déjà traitées
+                self.cursor.execute('''
+                    SELECT id, immatriculation, type_alerte, seuil_heures, 
+                           date_creation, date_programmation, description, statut
+                    FROM maintenance_alerts
+                    WHERE immatriculation = ? AND statut NOT IN ('TRAITEE', 'FERMEE', 'ARCHIVEE', 'SUPPRIMEE')
+                    ORDER BY date_creation DESC
+                ''', (immatriculation,))
             
             columns = ['id', 'immatriculation', 'type_alerte', 'seuil_heures', 
                       'date_creation', 'date_programmation', 'description', 'statut']

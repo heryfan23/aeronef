@@ -37,14 +37,15 @@ class Travaux(QFrame):
         self.filter_input.setCompleter(self.filter_completer)
         
         # Faire une tableau
-        self.tableau_affichage = QTableWidget(1,5,self)
+        self.tableau_affichage = QTableWidget(1,6,self)
         self.tableau_affichage.setGeometry(10,110,1000,400)
-        self.tableau_affichage.setHorizontalHeaderLabels(["Immatriculation","types de travaux","Ref autorisation","Date de validation","Date excecution"])
+        self.tableau_affichage.setHorizontalHeaderLabels(["Immatriculation","types de travaux","Ref autorisation","Description","Date de validation","Date excecution"])
         self.tableau_affichage.setColumnWidth(0,200)
         self.tableau_affichage.setColumnWidth(1,250)
         self.tableau_affichage.setColumnWidth(2,250)
         self.tableau_affichage.setColumnWidth(3,250)
         self.tableau_affichage.setColumnWidth(4,250)
+        self.tableau_affichage.setColumnWidth(5,250)
         self.tableau_affichage.setStyleSheet("background-color:white;color:black")
         self.tableau_affichage.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.tableau_affichage.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -86,9 +87,9 @@ class Travaux(QFrame):
         self.immatriculation_input.setGeometry(300, 19, 300, 35)
         self.immatriculation_input.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
         
-        self.types_travaux = QLabel("Types de travaux:", self.frame_travaux)
-        self.types_travaux.setGeometry(20, 50, 300, 80)
-        self.types_travaux.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
+        self.types_travaux_label = QLabel("Types de travaux:", self.frame_travaux)
+        self.types_travaux_label.setGeometry(20, 50, 300, 80)
+        self.types_travaux_label.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
         
         self.types_travaux = QComboBox(self.frame_travaux)
         self.types_travaux.setGeometry(300, 70, 300, 35)
@@ -104,23 +105,31 @@ class Travaux(QFrame):
         self.reference_input.setGeometry(300, 120, 300, 35)
         self.reference_input.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
         
-        self.date_validation = QLabel("Date de validation:", self.frame_travaux)
-        self.date_validation.setGeometry(20, 170, 300, 80)
-        self.date_validation.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
+        self.description_label = QLabel("Description:", self.frame_travaux)
+        self.description_label.setGeometry(20, 150, 300, 80)
+        self.description_label.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
+        
+        self.description_input = QLineEdit(self.frame_travaux)
+        self.description_input.setGeometry(300, 160, 300, 35)
+        self.description_input.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
+        
+        self.date_validation_label = QLabel("Date de validation:", self.frame_travaux)
+        self.date_validation_label.setGeometry(20, 200, 300, 80)
+        self.date_validation_label.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
         
         self.date_validation = QDateEdit(self.frame_travaux)
-        self.date_validation.setGeometry(300, 180, 300, 35)
+        self.date_validation.setGeometry(300, 210, 300, 35)
         self.date_validation.setStyleSheet("background-color: white; border:1px solid black;color:black;color:black;padding:5px;font-size:15px")
         self.date_validation.setDate(QDate.currentDate())
         self.date_validation.setCalendarPopup(True)
         self.date_validation.setDisplayFormat("yyyy-MM-dd")
         
-        self.date_excecution = QLabel("Date Excecution:", self.frame_travaux)
-        self.date_excecution.setGeometry(20, 220, 300, 80)
-        self.date_excecution.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
+        self.date_excecution_label = QLabel("Date d'exécution:", self.frame_travaux)
+        self.date_excecution_label.setGeometry(20, 250, 300, 80)
+        self.date_excecution_label.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
         
         self.date_excecution = QDateEdit(self.frame_travaux)
-        self.date_excecution.setGeometry(300, 230, 300, 35)
+        self.date_excecution.setGeometry(300, 260, 300, 35)
         self.date_excecution.setStyleSheet("background-color: white; border:1px solid black;color:black;color:black;padding:5px;font-size:15px")
         self.date_excecution.setDate(QDate.currentDate())
         self.date_excecution.setCalendarPopup(True)
@@ -145,12 +154,16 @@ class Travaux(QFrame):
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     immatriculation TEXT NOT NULL,
                     types_travaux TEXT,
+                    ref_autorisation TEXT,
                     date_validation TEXT,
+                    description TEXT,
                     date_excecution TEXT,
                     FOREIGN KEY (immatriculation) REFERENCES aircrafts(immatriculation) ON DELETE CASCADE
                 )
             ''' )
             self.conn.commit()
+            # après création, appeler migration pour anciennes bases
+            self._add_missing_columns()
         except Exception as e:
             print('Erreur initialisation DB:', e)
         
@@ -162,7 +175,23 @@ class Travaux(QFrame):
         # Flag pour mode édition
         self.edit_mode = False
         self.current_edit_immat = None
-        
+    
+    def _add_missing_columns(self):
+        """Ajoute les colonnes manquantes à la table travaux pour les anciennes bases."""
+        try:
+            self.cursor.execute("PRAGMA table_info(travaux)")
+            existing = {row[1] for row in self.cursor.fetchall()}
+            if 'description' not in existing:
+                self.cursor.execute("ALTER TABLE travaux ADD COLUMN description TEXT")
+                self.conn.commit()
+                print("Colonne description ajoutée à travaux")
+            if 'ref_autorisation' not in existing:
+                self.cursor.execute("ALTER TABLE travaux ADD COLUMN ref_autorisation TEXT")
+                self.conn.commit()
+                print("Colonne ref_autorisation ajoutée à travaux")
+        except Exception as e:
+            print(f"Erreur ajout colonnes manquantes (travaux): {e}")
+
     def load_immatriculations(self):
         """Charge tous les matricules depuis la table aircrafts"""
         try:
@@ -181,7 +210,8 @@ class Travaux(QFrame):
     def load_travaux(self):
         """Charge les travaux depuis la base de donnees"""
         try:
-            self.cursor.execute('SELECT id, immatriculation, types_travaux, date_validation, date_excecution FROM travaux ORDER BY immatriculation DESC')
+            # select columns in same order as table headers
+            self.cursor.execute('SELECT id, immatriculation, types_travaux, ref_autorisation, description, date_validation, date_excecution FROM travaux ORDER BY immatriculation DESC')
             rows = self.cursor.fetchall()
         except Exception as e:
             print('Erreur lecture DB:', e)
@@ -207,6 +237,7 @@ class Travaux(QFrame):
         immat = self.immatriculation_input.currentText().strip()
         # the types_travaux field is a QComboBox, use currentText() instead of text()
         types_travaux = self.types_travaux.currentText().strip()
+        ref_autorisation = self.reference_input.text().strip()
         date_validation = self.date_validation.date().toString("yyyy-MM-dd")
         date_excecution = self.date_excecution.date().toString("yyyy-MM-dd")
         
@@ -223,14 +254,14 @@ class Travaux(QFrame):
             if self.edit_mode:
                 # Mode édition: UPDATE
                 self.cursor.execute(
-                    'UPDATE travaux SET types_travaux=?, date_validation=?, date_excecution=? WHERE immatriculation=?',
-                    (types_travaux, date_validation, date_excecution, self.current_edit_immat)
+                    'UPDATE travaux SET types_travaux=?, ref_autorisation=?, date_validation=?, description=?, date_excecution=? WHERE immatriculation=?',
+                    (types_travaux, ref_autorisation, date_validation, self.description_input.text().strip(), date_excecution, self.current_edit_immat)
                 )
             else:
                 # Mode création: INSERT
                 self.cursor.execute(
-                    'INSERT INTO travaux (immatriculation, types_travaux, date_validation, date_excecution) VALUES (?, ?, ?, ?)',
-                    (immat, types_travaux, date_validation, date_excecution)
+                    'INSERT INTO travaux (immatriculation, types_travaux, ref_autorisation, description, date_validation, date_excecution) VALUES (?, ?, ?, ?, ?, ?)',
+                    (immat, types_travaux, ref_autorisation, self.description_input.text().strip(), date_validation, date_excecution)
                 )
             self.conn.commit()
         except Exception as e:
@@ -338,14 +369,18 @@ class Travaux(QFrame):
             msg.exec()
     
     def modifier_travaux(self, row, immat):
-        # Recuperer les donnees de la ligne avec verification
+        # Récupérer les données de la ligne, en respectant l'ordre des colonnes défini dans load_travaux
         types_travaux = self.tableau_affichage.item(row, 1).text() if self.tableau_affichage.item(row, 1) else ""
-        date_validation = self.tableau_affichage.item(row, 2).text() if self.tableau_affichage.item(row, 2) else ""
-        date_excecution = self.tableau_affichage.item(row, 3).text() if self.tableau_affichage.item(row, 3) else ""
+        ref_auth = self.tableau_affichage.item(row, 2).text() if self.tableau_affichage.item(row, 2) else ""
+        description = self.tableau_affichage.item(row, 3).text() if self.tableau_affichage.item(row, 3) else ""
+        date_validation = self.tableau_affichage.item(row, 4).text() if self.tableau_affichage.item(row, 4) else ""
+        date_excecution = self.tableau_affichage.item(row, 5).text() if self.tableau_affichage.item(row, 5) else ""
         
         # Remplir les champs du formulaire
         self.immatriculation_input.setCurrentText(immat)
         self.types_travaux.setCurrentText(types_travaux)
+        self.reference_input.setText(ref_auth)
+        self.description_input.setText(description)
         self.date_validation.setDate(QDate.fromString(date_validation, "yyyy-MM-dd"))
         self.date_excecution.setDate(QDate.fromString(date_excecution, "yyyy-MM-dd"))
         
@@ -414,6 +449,8 @@ class Travaux(QFrame):
     
     def reset_form(self):
         self.types_travaux.setCurrentIndex(0)
+        self.reference_input.clear()
+        self.description_input.clear()
         self.date_validation.setDate(QDate.currentDate())
         self.date_excecution.setDate(QDate.currentDate())
         self.enregistrer.setText("Enregistrer")

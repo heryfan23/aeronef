@@ -116,7 +116,7 @@ class Login(QWidget):
             self.username_input.clear()
             self.password_input.clear()
             self.username_input.setFocus()
-    
+    # activer touche enter
     def keyPressEvent(self, event):
         """Permet de se connecter en appuyant sur Entrée"""
         if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:

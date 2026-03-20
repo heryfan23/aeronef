@@ -131,20 +131,17 @@ class Directives(QFrame):
 
         self.date_realisation = QLabel("Date de réalisation :",self.frame_directives)
         self.date_realisation.setStyleSheet("color: black; font-size: 16px;background-color:none;")
-        self.date_realisation_input = QDateEdit(self.frame_directives)
+        self.date_realisation_input = QLineEdit(self.frame_directives)
         self.date_realisation_input.setStyleSheet("background-color: white;color:black;padding:5px;font-size:15px;border:1px solid black")
-        self.date_realisation_input.setDate(QDate.currentDate())
-        self.date_realisation_input.setCalendarPopup(True)
-        self.date_realisation_input.setDisplayFormat("yyyy-MM-dd")
+        self.date_realisation_input.setPlaceholderText("YYYY-MM-DD")
 
         # sixth row - date_applications and heurs
         self.date_applications = QLabel("Dates d'application :",self.frame_directives)
         self.date_applications.setStyleSheet("color: black; font-size: 16px;background-color:none;")
-        self.date_applications_input = QDateEdit(self.frame_directives)
+        self.date_applications_input = QLineEdit(self.frame_directives)
         self.date_applications_input.setStyleSheet("background-color: white;color:black;padding:5px;font-size:15px;border:1px solid black")
-        self.date_applications_input.setDate(QDate.currentDate())
-        self.date_applications_input.setCalendarPopup(True)
-        self.date_applications_input.setDisplayFormat("yyyy-MM-dd")
+        # self.date_applications_input.setText(QDate.currentDate().toString("yyyy-MM-dd"))
+        self.date_applications_input.setPlaceholderText("YYYY-MM-DD")
 
         self.heurs = QLabel("Heures / Cycles :",self.frame_directives)
         self.heurs.setStyleSheet("color: black; font-size: 16px;background-color:none;")
@@ -152,21 +149,19 @@ class Directives(QFrame):
         self.heurs_input.setStyleSheet("background-color: white;color:black;padding:5px;font-size:15px;border:1px solid black")
 
         # seventh row - prochain and methodes
-        self.prochain = QLabel(" Date Prochain \n échéance :",self.frame_directives)
+        self.prochain = QLabel(" Date Prochaine \n échéance :",self.frame_directives)
         self.prochain.setStyleSheet("color: black; font-size: 16px;background-color:none;")
-        self.prochain_input = QDateEdit(self.frame_directives)
+        self.prochain_input = QLineEdit(self.frame_directives)
         self.prochain_input.setStyleSheet("background-color: white;color:black;padding:5px;font-size:15px;border:1px solid black")
-        self.prochain_input.setDate(QDate.currentDate())
-        self.prochain_input.setCalendarPopup(True)
-        self.prochain_input.setDisplayFormat("yyyy-MM-dd")
+        # self.prochain_input.setText(QDate.currentDate().toString("yyyy-MM-dd"))
+        self.prochain_input.setPlaceholderText("YYYY-MM-DD")
 
         self.methodes = QLabel("Methodes \n Conformités :",self.frame_directives)
         self.methodes.setStyleSheet("color: black; font-size: 16px;background-color:none;")
-        self.methodes_input = QDateEdit(self.frame_directives)
+        
+        self.methodes_input = QLineEdit(self.frame_directives)
         self.methodes_input.setStyleSheet("background-color: white;color:black;padding:5px;font-size:15px;border:1px solid black")
-        self.methodes_input.setDate(QDate.currentDate())
-        self.methodes_input.setCalendarPopup(True)
-        self.methodes_input.setDisplayFormat("yyyy-MM-dd")
+        # self.methodes_input.setText(QDate.currentDate().toString("yyyy-MM-dd"))
 
         # add widgets to layout
         form_layout.addWidget(self.immatriculation_label, 0, 0)
@@ -304,11 +299,11 @@ class Directives(QFrame):
         statut = self.statut_input.currentText().strip()
         etat = self.etat_input.currentText().strip()
         autorite = self.autorite_input.currentText().strip()
-        date_realisation = self.date_realisation_input.date().toString("yyyy-MM-dd")
-        date_applications = self.date_applications_input.date().toString("yyyy-MM-dd")
+        date_realisation = self.date_realisation_input.text().strip()
+        date_applications = self.date_applications_input.text().strip()
         heures_cycles = self.heurs_input.text().strip()
-        prochaine_echeance = self.prochain_input.date().toString("yyyy-MM-dd")
-        methode_conformite = self.methodes_input.date().toString("yyyy-MM-dd")
+        prochaine_echeance = self.prochain_input.text().strip()
+        methode_conformite = self.methodes_input.text().strip()
         
         if not immat:
             msg = QMessageBox(self)
@@ -458,11 +453,11 @@ class Directives(QFrame):
         self.statut_input.setCurrentText(statut)
         self.etat_input.setCurrentText(etat)
         self.autorite_input.setCurrentText(autorite)
-        self.date_realisation_input.setDate(QDate.fromString(date_realisation, "yyyy-MM-dd"))
-        self.date_applications_input.setDate(QDate.fromString(date_applications, "yyyy-MM-dd"))
+        self.date_realisation_input.setText(date_realisation)
+        self.date_applications_input.setText(date_applications)
         self.heurs_input.setText(heures_cycles)
-        self.prochain_input.setDate(QDate.fromString(prochaine_echeance, "yyyy-MM-dd"))
-        self.methodes_input.setDate(QDate.fromString(methode_conformite, "yyyy-MM-dd"))
+        self.prochain_input.setText(prochaine_echeance)
+        self.methodes_input.setText(methode_conformite)
         
         # Activer le mode édition
         self.edit_mode = True
@@ -533,11 +528,11 @@ class Directives(QFrame):
         self.statut_input.setCurrentIndex(0)
         self.etat_input.setCurrentIndex(0)
         self.autorite_input.setCurrentIndex(0)
-        self.date_realisation_input.setDate(QDate.currentDate())
-        self.date_applications_input.setDate(QDate.currentDate())
+        self.date_realisation_input.clear()
+        self.date_applications_input.clear()
         self.heurs_input.clear()
-        self.prochain_input.setDate(QDate.currentDate())
-        self.methodes_input.setDate(QDate.currentDate())
+        self.prochain_input.clear()
+        self.methodes_input.clear()
         self.enregistrer.setText("Enregistrer")
         # Désactiver le mode édition
         self.edit_mode = False

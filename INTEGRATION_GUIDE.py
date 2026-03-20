@@ -122,8 +122,9 @@ CALENDRIER DES PROCHAINES MAINTENANCES
 
 # Remplacer la méthode save_heures existante par:
 """
+"""
     def save_heures(self):
-        \"\"\"Sauvegarde les heures de vol et déclenche les alertes automatiques\"\"\"
+        Sauvegarde les heures de vol et déclenche les alertes automatiques 
         immat = self.immatriculation_input.currentText().strip()
         date_vol = self.date_vol.date().toString("yyyy-MM-dd")
         temps_vol = self.temps_vol.text().strip()
@@ -164,7 +165,7 @@ CALENDRIER DES PROCHAINES MAINTENANCES
         # Nettoyer les champs
         self.temps_vol.clear()
         self.temps_cumul.clear()
-        self.date_vol.setDate(QDate.currentDate())
+        self.date_vol.setDate(QDate().currentDate())
         
         # Recharger le tableau
         self.load_heures()
@@ -180,7 +181,7 @@ CALENDRIER DES PROCHAINES MAINTENANCES
         msg.setText(f\"Heures de vol enregistrées pour {immat}\\n\\nVeuillez consulter le tableau de bord pour les alertes.\")
         msg.setStyleSheet(\"QMessageBox { background-color: #2d2d69; } QMessageBox QLabel { color: white; }\")
         msg.exec()
-\"\"\"
+"\"\"\"
 
 # ============================================================
 # À AJOUTER À bienvenue.py POUR AFFICHER LE TABLEAU DE BORD
@@ -192,7 +193,7 @@ from alertes_dashboard import AlertesDashboard
 """
 
 # Dans la méthode __init__ de la classe Bienvenue, ajouter après les autres frames:
-"""
+
         # Frame Alertes Dashboard
         self.alertes_frame = AlertesDashboard(self)
         self.alertes_frame.setGeometry(270, 70, 1070, 620)
@@ -231,8 +232,7 @@ from alertes_dashboard import AlertesDashboard
 # ============================================================
 # EXEMPLE D'UTILISATION DIRECTE
 # ============================================================
-
-\"\"\"
+"""
 # Dans n'importe quel script:
 
 from database_manager import DatabaseManager
@@ -261,4 +261,4 @@ report = maintenance.generate_maintenance_report(immatriculation)
 print(report)
 
 db.close()
-\"\"\"
+"""

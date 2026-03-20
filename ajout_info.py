@@ -95,25 +95,25 @@ class AjoutInfo(QFrame):
         self.immatriculation_input.setGeometry(200, 99, 300, 35)
         self.immatriculation_input.setStyleSheet("background-color: white;border:1px solid black;color:black;padding:5px;font-size:15px")
         
-        self.marque = QLabel("Marque/Modèle:", self.frame_ajout)
-        self.marque.setGeometry(20, 150, 150, 30)
-        self.marque.setStyleSheet("color: black; font-size: 16px;background-color:none;")
+        self.marque_label = QLabel("Marque/Modèle:", self.frame_ajout)
+        self.marque_label.setGeometry(20, 150, 150, 30)
+        self.marque_label.setStyleSheet("color: black; font-size: 16px;background-color:none;")
         
         self.marque = QLineEdit(self.frame_ajout)
         self.marque.setGeometry(200, 149, 300, 35)
         self.marque.setStyleSheet("background-color: white;color:black;padding:5px;font-size:15px;border:1px solid black;")
         
-        self.serie = QLabel("Numéro de Série:", self.frame_ajout)
-        self.serie.setGeometry(20, 200, 150, 30)
-        self.serie.setStyleSheet("color: black; font-size: 16px;background-color:none;")
+        self.serie_label = QLabel("Numéro de Série:", self.frame_ajout)
+        self.serie_label.setGeometry(20, 200, 150, 30)
+        self.serie_label.setStyleSheet("color: black; font-size: 16px;background-color:none;")
         
         self.serie = QLineEdit(self.frame_ajout)
         self.serie.setGeometry(200, 199, 300, 35)
         self.serie.setStyleSheet("background-color: white;border:1px solid black;color:black;padding:5px;font-size:15px;")
         
-        self.date_fabrication = QLabel("Date fabrication:", self.frame_ajout)
-        self.date_fabrication.setGeometry(20, 250, 150, 30)
-        self.date_fabrication.setStyleSheet("color: black; font-size: 16px;background-color:none;")
+        self.date_fabrication_label = QLabel("Date fabrication:", self.frame_ajout)
+        self.date_fabrication_label.setGeometry(20, 250, 150, 30)
+        self.date_fabrication_label.setStyleSheet("color: black; font-size: 16px;background-color:none;")
         
         self.date_fabrication = QDateEdit(self.frame_ajout)
         self.date_fabrication.setGeometry(200, 249, 300, 35)
@@ -122,26 +122,26 @@ class AjoutInfo(QFrame):
         self.date_fabrication.setDisplayFormat("yyyy-MM-dd")
         self.date_fabrication.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px;")
         
-        self.ppte_exploi = QLabel("Propriétaire:", self.frame_ajout)
-        self.ppte_exploi.setGeometry(550, 100, 150, 30)
-        self.ppte_exploi.setStyleSheet("color: black; font-size: 16px;background-color:none;")
+        self.ppte_exploi_label = QLabel("Propriétaire:", self.frame_ajout)
+        self.ppte_exploi_label.setGeometry(550, 100, 150, 30)
+        self.ppte_exploi_label.setStyleSheet("color: black; font-size: 16px;background-color:none;")
         
         self.ppte_exploi = QLineEdit(self.frame_ajout)
         self.ppte_exploi.setGeometry(650, 99, 300, 35)
         self.ppte_exploi.setStyleSheet("background-color: white;border:1px solid black;color:black;padding:5px;font-size:15px;")
         
          
-        self.heures_total = QLabel("Heures Total \n (hh:mm) :", self.frame_ajout)
-        self.heures_total.setGeometry(550, 150, 150, 50)
-        self.heures_total.setStyleSheet("color: black; font-size: 16px;background-color:none;;")
+        self.heures_total_label = QLabel("Heures Total \n (hh:mm) :", self.frame_ajout)
+        self.heures_total_label.setGeometry(550, 150, 150, 50)
+        self.heures_total_label.setStyleSheet("color: black; font-size: 16px;background-color:none;;")
         
         self.heures_total = QLineEdit(self.frame_ajout)
         self.heures_total.setGeometry(650, 160, 300, 35)
         self.heures_total.setStyleSheet("background-color: white;border:1px solid black;color:black;padding:5px;font-size:15px")
         
-        self.cycles = QLabel("Cycles Total:", self.frame_ajout)
-        self.cycles.setGeometry(550, 210, 150, 30)
-        self.cycles.setStyleSheet("color: black; font-size: 16px;background-color:none;")
+        self.cycles_label = QLabel("Cycles Total:", self.frame_ajout)
+        self.cycles_label.setGeometry(550, 210, 150, 30)
+        self.cycles_label.setStyleSheet("color: black; font-size: 16px;background-color:none;")
 
         self.cycles_total = QLineEdit(self.frame_ajout)
         self.cycles_total.setGeometry(650, 210, 300, 35)
@@ -177,11 +177,11 @@ class AjoutInfo(QFrame):
                     heures_total TEXT
                 )
             ''')
-            # Add cycles_total column if it doesn't exist
+            # ajouter cycles total dans table aircrafts
             try:
                 self.cursor.execute("ALTER TABLE aircrafts ADD COLUMN cycles_total TEXT")
             except sqlite3.OperationalError:
-                pass  # Column already exists
+                pass  # si colonne existe
             self.conn.commit()
         except Exception as e:
             print('Erreur initialisation DB:', e)
@@ -470,6 +470,7 @@ class AjoutInfo(QFrame):
         proprietaire = self.ppte_exploi.text().strip()
         heures = self.heures_total.text().strip()
         cycles = self.cycles_total.text().strip()
+        
 
         if immat or marque or serie or datefab or proprietaire or heures or cycles:
             if not immat:
@@ -523,6 +524,7 @@ class AjoutInfo(QFrame):
         self.frame_ajout.hide()
 
     def load_informations(self):
+        """Charge et affiche les informations aéronefs avec alertes si heures vol > heures total"""
         try:
             self.cursor.execute('SELECT immatriculation, marque, serie, date_fabrication, proprietaire, heures_total, cycles_total FROM aircrafts ORDER BY id DESC')
             rows = self.cursor.fetchall()
@@ -533,20 +535,45 @@ class AjoutInfo(QFrame):
         # ajuster le nombre de lignes du tableau
         row_count = max(20, len(rows))
         self.tableau_affichage.setRowCount(row_count)
-        # clear filter when reloading
+        # effacer le mot dans input filter apres rechargement
         self.filter_input.setText("")
 
         # vider le contenu existant
         self.tableau_affichage.clearContents()
 
-        # remplir avec les données
+        # remplir avec les données et vérifier les alertes
         for idx, row in enumerate(rows):
+            immat = row[0]
+            heures_total_aircraft = row[5]
+            
+            # Calculer le total des heures de vol depuis heures_vol
+            try:
+                self.cursor.execute('SELECT SUM(CAST(REPLACE(temps_vol, ":", ".") AS FLOAT)) FROM heures_vol WHERE immatriculation=?', (immat,))
+                result = self.cursor.fetchone()
+                total_heures_vol = result[0] if result and result[0] else 0
+            except Exception:
+                total_heures_vol = 0
+            
+            # Convertir heures_total_aircraft en float pour comparaison
+            try:
+                if heures_total_aircraft:
+                    heures_total_aircraft_float = float(heures_total_aircraft)
+                else:
+                    heures_total_aircraft_float = 0
+            except:
+                heures_total_aircraft_float = 0
+            
+            # Déterminer la couleur de fond
+            # ALERTE: si total heures vol > heures total de l'aéronef
+            is_alert = total_heures_vol > heures_total_aircraft_float
+            alert_color = QColor("#FF6B6B") if is_alert else QColor("white")  # Rouge si alerte
+            
             for col, value in enumerate(row):
-                self.tableau_affichage.setItem(idx, col, QTableWidgetItem(str(value)))
-        
-        
-        
-    
+                item = QTableWidgetItem(str(value))
+                item.setBackground(alert_color)
+                if is_alert:
+                    item.setForeground(QColor("white"))
+                self.tableau_affichage.setItem(idx, col, item)
         
     def apply_filter(self, text: str):
         """Masque les lignes du tableau dont l'immatriculation ne contient pas *text*."""

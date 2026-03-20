@@ -3,6 +3,7 @@ from PyQt6.QtCore import QStringListModel, Qt, QDate
 from PyQt6.QtGui import QColor
 import sqlite3
 import os
+from datetime import datetime, timedelta
 
 class Helices(QFrame):
     def __init__(self, parent=None):
@@ -171,14 +172,14 @@ class Helices(QFrame):
         self.install_hours_label.setGeometry(10, 410, 200, 30)
         
         self.install_hours = QLineEdit(self.frame_helices)
-        self.install_hours.setStyleSheet("background-color: white; border:1px solid black; color:black; padding-left:5px; font-size:15px")
+        self.install_hours.setStyleSheet("background-color: white; border:1px solid black; color:black; padding:5px; font-size:15px")
         self.install_hours.setGeometry(250, 410, 200, 30)
         
         self.install_cycles_label = QLabel("Cycles installation:", self.frame_helices)
         self.install_cycles_label.setStyleSheet("color: black; font-size: 16px; background-color:none; font-weight:bold")
         self.install_cycles_label.setGeometry(10, 450, 200, 30)
         self.install_cycles = QLineEdit(self.frame_helices)
-        self.install_cycles.setStyleSheet("background-color: white; border:1px solid black; color:black; padding-left:5px; font-size:15px")
+        self.install_cycles.setStyleSheet("background-color: white; border:1px solid black; color:black; padding:5px; font-size:15px")
         self.install_cycles.setGeometry(250, 450, 200, 30)
        
         # section potentiel title
@@ -233,8 +234,9 @@ class Helices(QFrame):
         self.pot_restant_label.setGeometry(500, 330, 200, 30)
         
         self.pot_restant = QLineEdit(self.frame_helices)
-        self.pot_restant.setStyleSheet("background-color: white; border:1px solid black; color:black; padding:5px; font-size:15px")
+        self.pot_restant.setStyleSheet("background-color: #f0f0f0; border:1px solid black; color:black; padding:5px; font-size:15px")
         self.pot_restant.setGeometry(700, 330, 200, 30)
+        self.pot_restant.setReadOnly(True)
       
         self.pot_restant_cycles_label = QLabel("Pot restant cycles:", self.frame_helices)
         self.pot_restant_cycles_label.setStyleSheet("color: black; font-size: 16px; background-color:none; font-weight:bold")
@@ -265,7 +267,7 @@ class Helices(QFrame):
         self.frame_helices.hide()
         # calc details label
         self.calc_details = QLabel("", self.frame_helices)
-        self.calc_details.setGeometry(10, 420, 680, 50)
+        self.calc_details.setGeometry(10, 490, 680, 50)
         self.calc_details.setStyleSheet("color: black; font-size:12px; background-color: none;")
         self.calc_details.setWordWrap(True)
         self.compute_all()
@@ -339,6 +341,7 @@ class Helices(QFrame):
         # Flag pour mode édition
         self.edit_mode = False
         self.current_edit_immat = None
+        self.current_edit_id = None
         self.current_edit_date_rev = None
         
         # compute initial derived values
@@ -368,7 +371,7 @@ class Helices(QFrame):
             print('Erreur chargement immatriculations:', e)
     
     def load_helices(self):
-        """Charge les helices depuis la base de donnees"""
+        """Charge les helices depuis la base de donnees avec alertes"""
         try:
             self.cursor.execute('''SELECT id, immatriculation, marque, numero_serie, tsn_hours, tsn_cycles, tso_hours, tso_cycles,
                                           date_installation, install_hours, install_cycles,
@@ -389,8 +392,50 @@ class Helices(QFrame):
         
         # Remplir avec les donnees (en sautant la colonne ID)
         for idx, row in enumerate(rows):
+            # Extraire les informations pour vérifier l'alerte
+            # Colonnes: id, immat, marque, serie, tsn_h, tsn_c, tso_h, tso_c,
+            #           date_inst, install_h, install_c, pot_months, pot_h, pot_c,
+            #           date_revision, pot_restant, pot_restant_cycles
+            
+            pot_restant = row[15]  # Colonne "Pot restant"
+            pot_restant_cycles = row[16]  # Colonne "Pot restant cycles"
+            date_revision_str = row[14]  # Colonne "Date prochaines revisions"
+            
+            # Convertir pot_restant en heures float
+            try:
+                pot_restant_float = float(str(pot_restant).strip()) if pot_restant else 0
+            except:
+                pot_restant_float = 0
+            
+            # Convertir pot_restant_cycles en integer
+            try:
+                pot_restant_cycles_int = int(str(pot_restant_cycles).strip()) if pot_restant_cycles else 0
+            except:
+                pot_restant_cycles_int = 0
+            
+            # Vérifier si date de révision est dans 30 jours
+            is_date_in_30days = False
+            try:
+                if date_revision_str:
+                    date_revision = datetime.strptime(str(date_revision_str), "%Y-%m-%d").date()
+                    today = datetime.now().date()
+                    days_until = (date_revision - today).days
+                    is_date_in_30days = 0 <= days_until <= 30
+            except:
+                pass
+            
+            # ALERTE: pot_restant <= 20h ET pot_restant_cycles <= 50 ET date in 30j
+            is_alert = (pot_restant_float <= 20 and 
+                       pot_restant_cycles_int <= 50 and 
+                       is_date_in_30days)
+            
+            alert_color = QColor("#FF6B6B") if is_alert else QColor("white")  # Rouge si alerte
+            
             for col, value in enumerate(row[1:]):  # Ignorer l'ID (index 0)
                 item = QTableWidgetItem(str(value))
+                item.setBackground(alert_color)
+                if is_alert:
+                    item.setForeground(QColor("white"))
                 # Stocker l'ID dans les donnees de l'item
                 item.setData(Qt.ItemDataRole.UserRole, row[0])
                 self.tableau_affichage.setItem(idx, col, item)
@@ -520,15 +565,15 @@ class Helices(QFrame):
                 total_hours_db, _ = self._get_heures_cycles_from_heures_vol(immat)
 
             # remaining = pot_hours_val - (install_hours_val + total_hours_db)
-            # show full formula in the field
             if pot_hours_val == 0:
-                self.pot_restant.setText("0")
+                self.pot_restant.setText("0:00")
                 
-            if tsn_heures_val > install_hours_val :
-                # formula = f"{pot_hours_val} - ({tsn_heures_val} - {install_hours_val}) = {pot_hours_val - (tsn_heures_val - install_hours_val):.1f}"
-                self.pot_restant.setText(f"{pot_hours_val - (tsn_heures_val - install_hours_val):.1f}")
+            elif tsn_heures_val > install_hours_val:
+                remaining_hours = pot_hours_val - (tsn_heures_val - install_hours_val)
+                # Afficher en format hh:mm au lieu de float
+                self.pot_restant.setText(self._format_hours_to_str(remaining_hours))
             else:
-                self.pot_restant.setText("TSN heures doit être supérieur à heures installation")
+                self.pot_restant.setText("TSN heures > install heures")
         except Exception:
             pass
         # no direct update of calc_details here; compute_all will assemble
@@ -643,10 +688,10 @@ class Helices(QFrame):
             pot_months = None
         pot_hours = self.pot_hours.text().strip()
         pot_cycles_text = self.pot_cycles.text().strip()
-        # try:
-        pot_cycles = int(pot_cycles_text) if pot_cycles_text else None
-        # except ValueError:
-        #     pot_cycles = None
+        try:
+            pot_cycles = int(pot_cycles_text) if pot_cycles_text and pot_cycles_text != 'None' else None
+        except ValueError:
+            pot_cycles = None
         # prochaines revision
         date_rev = self.dates_revision.date().toString("yyyy-MM-dd")
         pot_restant = self.pot_restant.text().strip()
@@ -672,11 +717,11 @@ class Helices(QFrame):
                     'UPDATE helices SET marque=?, numero_serie=?, tsn_hours=?, tsn_cycles=?, tso_hours=?, tso_cycles=?, '
                     'date_installation=?, install_hours=?, install_cycles=?, pot_months=?, pot_hours=?, pot_cycles=?, '
                     'date_revision=?, pot_restant=?, pot_restant_cycles=? '
-                    'WHERE immatriculation=? AND date_revision=?',
+                    'WHERE id=?',
                     (marque, numero_serie, tsn_hours, tsn_cycles, tso_hours, tso_cycles,
                      date_inst, inst_hours, inst_cycles, pot_months, pot_hours, pot_cycles,
                      date_rev, pot_restant, pot_restant_cycles,
-                     self.current_edit_immat, self.current_edit_date_rev)
+                     self.current_edit_id)
                 )
             else:
                 # Mode création: INSERT
@@ -701,6 +746,17 @@ class Helices(QFrame):
         
         # Nettoyer les champs
         self.reset_form()
+        
+        # Vérifier les alertes moteurs/hélices (maintenance_system)
+        try:
+            from maintenance_system import MaintenanceAutomationSystem
+            from database_manager import DatabaseManager
+            db = DatabaseManager()
+            maintenance_system = MaintenanceAutomationSystem(db)
+            maintenance_system.check_moteurs_helices_alerts()
+            print("✓ Vérification des alertes moteurs/hélices effectuée")
+        except Exception as e:
+            print(f"⚠️  Erreur vérification alertes: {e}")
         
         # Recharger le tableau
         self.load_helices()
@@ -831,6 +887,7 @@ class Helices(QFrame):
         
         # Activer le mode édition
         self.edit_mode = True
+        self.current_edit_id = self.tableau_affichage.item(row, 0).data(Qt.ItemDataRole.UserRole)
         self.current_edit_immat = immat
         self.current_edit_date_rev = date_rev
         
@@ -897,6 +954,7 @@ class Helices(QFrame):
         dialog.accept()
     
     def reset_form(self):
+        self.current_edit_id = None
         self.models.clear()
         self.numero_serie.clear()
         self.tsn_hours.clear()

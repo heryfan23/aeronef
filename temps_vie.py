@@ -511,7 +511,8 @@ class Temps_vie(QFrame):
         try:
             inst_h = self._parse_hours_str_to_float(self.heure_inst.text().strip())
             pot_h = self._parse_hours_str_to_float(self.potentiel_heures.text().strip())
-            restant_h = inst_h + pot_h
+            total_h = self._parse_hours_str_to_float(self.heures_total.text().strip())
+            restant_h = pot_h - (total_h - inst_h)
             self.pot_restant.setText(self._format_hours_to_str(restant_h))
         except Exception as e:
             self.pot_restant.setText("")
@@ -521,7 +522,8 @@ class Temps_vie(QFrame):
         try:
             inst_c = int(self.nombre_cycles_input.text().strip()) if self.nombre_cycles_input.text().strip() else 0
             pot_c = int(self.potentiel_cycles.text().strip()) if self.potentiel_cycles.text().strip() else 0
-            restant_c = inst_c + pot_c
+            tot_c = int(self.cycles.text().strip() if self.cycles.text().strip() else 0)
+            restant_c = pot_c - (tot_c - inst_c)
             self.pot_restant_cycles.setText(str(restant_c))
         except Exception as e:
             self.pot_restant_cycles.setText("")
@@ -558,8 +560,8 @@ class Temps_vie(QFrame):
         
         try:
             self.cursor.execute(
-                'INSERT INTO temps_vie (immatriculation, total_heures_cellule, nbr_tot_cycles_cellule, num_ref_ata, description, action, ref_docs, date_installation, heure_inst, pot_months, potentiel_heures, potentiel_cycles, dates_proc_rev, pot_restant, pot_restant_cycles, nom_equipements, nombre_cycles_input, date_calibration) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ',
-                (immat, total_heures, nbr_cycles, num_ref, description, action, ref_docs, date_install, heure_inst, pot_months, potentiel_heures, potentiel_cycles, dates_proc_rev, pot_restant, pot_restant_cycles, nom_equipements, nombre_cycles_input, date_calib)
+                'INSERT INTO temps_vie (immatriculation, total_heures_cellule, nbr_tot_cycles_cellule, num_ref_ata, description, action, ref_docs, date_installation, heure_inst, nombre_cycles_input, pot_months, potentiel_heures, potentiel_cycles, dates_proc_rev, pot_restant, pot_restant_cycles, nom_equipements, date_calibration) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ',
+                (immat, total_heures, nbr_cycles, num_ref, description, action, ref_docs, date_install, heure_inst, nombre_cycles_input, pot_months, potentiel_heures, potentiel_cycles, dates_proc_rev, pot_restant, pot_restant_cycles, nom_equipements, date_calib)
             )
             self.conn.commit()
         except Exception as e:
@@ -684,6 +686,7 @@ class Temps_vie(QFrame):
     
     def modifier_temps(self, row, immat):
         # Recuperer les donnees de la ligne avec verification
+        # Attention: l'ordre des colonnes du tableau doit correspondre au SELECT de load_temps()
         total_heures = self.tableau_affichage.item(row, 1).text() if self.tableau_affichage.item(row, 1) else ""
         nbr_cycles = self.tableau_affichage.item(row, 2).text() if self.tableau_affichage.item(row, 2) else ""
         num_ref = self.tableau_affichage.item(row, 3).text() if self.tableau_affichage.item(row, 3) else ""
@@ -692,14 +695,14 @@ class Temps_vie(QFrame):
         ref_docs = self.tableau_affichage.item(row, 6).text() if self.tableau_affichage.item(row, 6) else ""
         date_install = self.tableau_affichage.item(row, 7).text() if self.tableau_affichage.item(row, 7) else ""
         heure_inst = self.tableau_affichage.item(row, 8).text() if self.tableau_affichage.item(row, 8) else ""
-        pot_months = self.tableau_affichage.item(row, 9).text() if self.tableau_affichage.item(row, 9) else ""
-        potentiel_heures = self.tableau_affichage.item(row, 10).text() if self.tableau_affichage.item(row, 10) else ""
-        potentiel_cycles = self.tableau_affichage.item(row, 11).text() if self.tableau_affichage.item(row, 11) else ""
-        dates_proc_rev = self.tableau_affichage.item(row, 12).text() if self.tableau_affichage.item(row, 12) else ""
-        pot_restant = self.tableau_affichage.item(row, 13).text() if self.tableau_affichage.item(row, 13) else ""
-        pot_restant_cycles = self.tableau_affichage.item(row, 14).text() if self.tableau_affichage.item(row, 14) else ""
-        nom_equipements = self.tableau_affichage.item(row, 15).text() if self.tableau_affichage.item(row, 15) else ""
-        nombre_cycles_input = self.tableau_affichage.item(row, 16).text() if self.tableau_affichage.item(row, 16) else ""
+        nombre_cycles_input = self.tableau_affichage.item(row, 9).text() if self.tableau_affichage.item(row, 9) else ""
+        pot_months = self.tableau_affichage.item(row, 10).text() if self.tableau_affichage.item(row, 10) else ""
+        potentiel_heures = self.tableau_affichage.item(row, 11).text() if self.tableau_affichage.item(row, 11) else ""
+        potentiel_cycles = self.tableau_affichage.item(row, 12).text() if self.tableau_affichage.item(row, 12) else ""
+        dates_proc_rev = self.tableau_affichage.item(row, 13).text() if self.tableau_affichage.item(row, 13) else ""
+        pot_restant = self.tableau_affichage.item(row, 14).text() if self.tableau_affichage.item(row, 14) else ""
+        pot_restant_cycles = self.tableau_affichage.item(row, 15).text() if self.tableau_affichage.item(row, 15) else ""
+        nom_equipements = self.tableau_affichage.item(row, 16).text() if self.tableau_affichage.item(row, 16) else ""
         date_calib = self.tableau_affichage.item(row, 17).text() if self.tableau_affichage.item(row, 17) else ""
         
         # Remplir les champs du formulaire
@@ -754,8 +757,8 @@ class Temps_vie(QFrame):
         
         try:
             self.cursor.execute(
-                'UPDATE temps_vie SET total_heures_cellule=?, nbr_tot_cycles_cellule=?, num_ref_ata=?, description=?, action=?, ref_docs=?, date_installation=?, heure_inst=?, pot_months=?, potentiel_heures=?, potentiel_cycles=?, dates_proc_rev=?, pot_restant=?, pot_restant_cycles=?, nom_equipements=?, nombre_cycles_input=?, date_calibration=? WHERE id=?',
-                (total_heures, nbr_cycles, num_ref, description, action, ref_docs, date_install, heure_inst, pot_months, potentiel_heures, potentiel_cycles, dates_proc_rev, pot_restant, pot_restant_cycles, nom_equipements, nombre_cycles_input, dates_calib, row_id)
+                'UPDATE temps_vie SET total_heures_cellule=?, nbr_tot_cycles_cellule=?, num_ref_ata=?, description=?, action=?, ref_docs=?, date_installation=?, heure_inst=?, nombre_cycles_input=?, pot_months=?, potentiel_heures=?, potentiel_cycles=?, dates_proc_rev=?, pot_restant=?, pot_restant_cycles=?, nom_equipements=?, date_calibration=? WHERE id=?',
+                (total_heures, nbr_cycles, num_ref, description, action, ref_docs, date_install, heure_inst, nombre_cycles_input, pot_months, potentiel_heures, potentiel_cycles, dates_proc_rev, pot_restant, pot_restant_cycles, nom_equipements, dates_calib, row_id)
             )
             self.conn.commit()
         except Exception as e:

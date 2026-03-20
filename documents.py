@@ -36,10 +36,9 @@ class Documents(QFrame):
         self.filter_completer = QCompleter()
         self.filter_input.setCompleter(self.filter_completer)
         
-         # Faire une tableau
-        self.tableau_affichage = QTableWidget(20,6,self)
+        self.tableau_affichage = QTableWidget(20,8,self)
         self.tableau_affichage.setGeometry(10,110,1000,400)
-        self.tableau_affichage.setHorizontalHeaderLabels(["Immatriculation","CRS(date)","CRS(N° ref)","Date validation certificat de navigabilité","Date validation Licence Aéronef","Date de validation Calibrations(ELT,..)"])
+        self.tableau_affichage.setHorizontalHeaderLabels(["Immatriculation","CRS(date)","CRS(N° ref)","Date validation certificat de navigabilité","Date validation Licence Aéronef","Date validation ELT","Date validation Transpondeur","Date validation Altimètre"])
         self.tableau_affichage.setColumnWidth(0,150)
         self.tableau_affichage.setColumnWidth(1,200)
         self.tableau_affichage.setColumnWidth(2,200)
@@ -125,19 +124,41 @@ class Documents(QFrame):
         self.date_licence.setCalendarPopup(True)
         self.date_licence.setDisplayFormat("yyyy-MM-dd")
         
-        self.dates_calibrations = QLabel("Date de validité des calibrations \n (ELT,Transpondeur,altimètre):", self.frame_documents)
-        self.dates_calibrations.setGeometry(20, 280, 300, 80)
-        self.dates_calibrations.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
+        self.date_elt_label = QLabel("Date de validité \n calibration ELT:", self.frame_documents)
+        self.date_elt_label.setGeometry(20, 300, 300, 50)
+        self.date_elt_label.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
         
-        self.dates_calibrations = QDateEdit(self.frame_documents)
-        self.dates_calibrations.setGeometry(300, 310, 300, 35)
-        self.dates_calibrations.setDate(QDate.currentDate())
-        self.dates_calibrations.setCalendarPopup(True)
-        self.dates_calibrations.setDisplayFormat("yyyy-MM-dd")
-        self.dates_calibrations.setStyleSheet("background-color: white; border:1px solid black;color:black;color:black;padding:5px;font-size:15px")
+        self.date_elt = QDateEdit(self.frame_documents)
+        self.date_elt.setGeometry(300, 310, 300, 35)
+        self.date_elt.setDate(QDate.currentDate())
+        self.date_elt.setCalendarPopup(True)
+        self.date_elt.setDisplayFormat("yyyy-MM-dd")
+        self.date_elt.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
+        
+        self.date_transpondeur_label = QLabel("Date de validité \n calibration Transpondeur:", self.frame_documents)
+        self.date_transpondeur_label.setGeometry(620, 20, 300, 50)
+        self.date_transpondeur_label.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
+        
+        self.date_transpondeur = QDateEdit(self.frame_documents)
+        self.date_transpondeur.setGeometry(820, 30, 170, 35)
+        self.date_transpondeur.setDate(QDate.currentDate())
+        self.date_transpondeur.setCalendarPopup(True)
+        self.date_transpondeur.setDisplayFormat("yyyy-MM-dd")
+        self.date_transpondeur.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
+        
+        self.date_altimetre_label = QLabel("Date de validité \n calibration Altimètre:", self.frame_documents)
+        self.date_altimetre_label.setGeometry(620, 80, 300, 50)
+        self.date_altimetre_label.setStyleSheet("color: black; font-size: 16px;background-color:none;font-weight:bold")
+        
+        self.date_altimetre = QDateEdit(self.frame_documents)
+        self.date_altimetre.setGeometry(820, 90, 170, 35)
+        self.date_altimetre.setDate(QDate.currentDate())
+        self.date_altimetre.setCalendarPopup(True)
+        self.date_altimetre.setDisplayFormat("yyyy-MM-dd")
+        self.date_altimetre.setStyleSheet("background-color: white; border:1px solid black;color:black;padding:5px;font-size:15px")
         
         self.enregistrer = QPushButton("Enregistrer",self.frame_documents)
-        self.enregistrer.setGeometry(600,370,200,40)
+        self.enregistrer.setGeometry(600,400,200,40)
         self.enregistrer.setStyleSheet("background-color:blue;color:white;font-size:15px;border-radius:10px")
         self.enregistrer.setCursor(Qt.CursorShape.PointingHandCursor)
         self.enregistrer.clicked.connect(self.save_documents)
@@ -157,11 +178,29 @@ class Documents(QFrame):
                     crs_num TEXT,
                     date_certificat TEXT,
                     date_licence TEXT,
-                    dates_calibrations TEXT,
+                    date_elt TEXT,
+                    date_transpondeur TEXT,
+                    date_altimetre TEXT,
                     FOREIGN KEY (immatriculation) REFERENCES aircrafts(immatriculation)
                 )
             ''')
             self.conn.commit()
+            # Migration: add new columns if they don't exist
+            try:
+                self.cursor.execute('ALTER TABLE documents ADD COLUMN date_elt TEXT')
+                self.conn.commit()
+            except:
+                pass
+            try:
+                self.cursor.execute('ALTER TABLE documents ADD COLUMN date_transpondeur TEXT')
+                self.conn.commit()
+            except:
+                pass
+            try:
+                self.cursor.execute('ALTER TABLE documents ADD COLUMN date_altimetre TEXT')
+                self.conn.commit()
+            except:
+                pass
         except Exception as e:
             print('Erreur initialisation DB:', e)
         
@@ -189,7 +228,7 @@ class Documents(QFrame):
     def load_documents(self):
         """Charge les documents depuis la base de donnees"""
         try:
-            self.cursor.execute('SELECT id, immatriculation, crs_date, crs_num, date_certificat, date_licence, dates_calibrations FROM documents ORDER BY immatriculation DESC')
+            self.cursor.execute('SELECT id, immatriculation, crs_date, crs_num, date_certificat, date_licence, date_elt, date_transpondeur, date_altimetre FROM documents ORDER BY immatriculation DESC')
             rows = self.cursor.fetchall()
         except Exception as e:
             print('Erreur lecture DB:', e)
@@ -217,7 +256,9 @@ class Documents(QFrame):
         crs_num = self.crs_num.text().strip()
         date_certificat = self.date_certificat.date().toString("yyyy-MM-dd")
         date_licence = self.date_licence.date().toString("yyyy-MM-dd")
-        dates_calibrations = self.dates_calibrations.date().toString("yyyy-MM-dd")
+        date_elt = self.date_elt.date().toString("yyyy-MM-dd")
+        date_transpondeur = self.date_transpondeur.date().toString("yyyy-MM-dd")
+        date_altimetre = self.date_altimetre.date().toString("yyyy-MM-dd")
         
         if not immat:
             msg = QMessageBox(self)
@@ -230,8 +271,8 @@ class Documents(QFrame):
         
         try:
             self.cursor.execute(
-                'INSERT INTO documents (immatriculation, crs_date, crs_num, date_certificat, date_licence, dates_calibrations) VALUES (?, ?, ?, ?, ?, ?)',
-                (immat, crs_date, crs_num, date_certificat, date_licence, dates_calibrations)
+                'INSERT INTO documents (immatriculation, crs_date, crs_num, date_certificat, date_licence, date_elt, date_transpondeur, date_altimetre) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                (immat, crs_date, crs_num, date_certificat, date_licence, date_elt, date_transpondeur, date_altimetre)
             )
             self.conn.commit()
         except Exception as e:
@@ -344,7 +385,9 @@ class Documents(QFrame):
         crs_num = self.tableau_affichage.item(row, 2).text() if self.tableau_affichage.item(row, 2) else ""
         date_certificat = self.tableau_affichage.item(row, 3).text() if self.tableau_affichage.item(row, 3) else ""
         date_licence = self.tableau_affichage.item(row, 4).text() if self.tableau_affichage.item(row, 4) else ""
-        dates_calibrations = self.tableau_affichage.item(row, 5).text() if self.tableau_affichage.item(row, 5) else ""
+        date_elt = self.tableau_affichage.item(row, 5).text() if self.tableau_affichage.item(row, 5) else ""
+        date_transpondeur = self.tableau_affichage.item(row, 6).text() if self.tableau_affichage.item(row, 6) else ""
+        date_altimetre = self.tableau_affichage.item(row, 7).text() if self.tableau_affichage.item(row, 7) else ""
         
         # Remplir les champs du formulaire
         self.immatriculation_input.setCurrentText(immat)
@@ -352,7 +395,9 @@ class Documents(QFrame):
         self.crs_num.setText(crs_num)
         self.date_certificat.setDate(QDate.fromString(date_certificat, "yyyy-MM-dd"))
         self.date_licence.setDate(QDate.fromString(date_licence, "yyyy-MM-dd"))
-        self.dates_calibrations.setDate(QDate.fromString(dates_calibrations, "yyyy-MM-dd"))
+        self.date_elt.setDate(QDate.fromString(date_elt, "yyyy-MM-dd"))
+        self.date_transpondeur.setDate(QDate.fromString(date_transpondeur, "yyyy-MM-dd"))
+        self.date_altimetre.setDate(QDate.fromString(date_altimetre, "yyyy-MM-dd"))
         
         # Changer le titre et le comportement du formulaire
         self.enregistrer.setText("Mettre a jour")
@@ -367,12 +412,14 @@ class Documents(QFrame):
         crs_num = self.crs_num.text().strip()
         date_certificat = self.date_certificat.date().toString("yyyy-MM-dd")
         date_licence = self.date_licence.date().toString("yyyy-MM-dd")
-        dates_calibrations = self.dates_calibrations.date().toString("yyyy-MM-dd")
+        date_elt = self.date_elt.date().toString("yyyy-MM-dd")
+        date_transpondeur = self.date_transpondeur.date().toString("yyyy-MM-dd")
+        date_altimetre = self.date_altimetre.date().toString("yyyy-MM-dd")
         
         try:
             self.cursor.execute(
-                'UPDATE documents SET crs_date=?, crs_num=?, date_certificat=?, date_licence=?, dates_calibrations=? WHERE immatriculation=?',
-                (crs_date, crs_num, date_certificat, date_licence, dates_calibrations, immat)
+                'UPDATE documents SET crs_date=?, crs_num=?, date_certificat=?, date_licence=?, date_elt=?, date_transpondeur=?, date_altimetre=? WHERE immatriculation=?',
+                (crs_date, crs_num, date_certificat, date_licence, date_elt, date_transpondeur, date_altimetre, immat)
             )
             self.conn.commit()
         except Exception as e:
@@ -441,7 +488,9 @@ class Documents(QFrame):
         self.crs_num.clear()
         self.date_certificat.setDate(QDate.currentDate())
         self.date_licence.setDate(QDate.currentDate())
-        self.dates_calibrations.setDate(QDate.currentDate())
+        self.date_elt.setDate(QDate.currentDate())
+        self.date_transpondeur.setDate(QDate.currentDate())
+        self.date_altimetre.setDate(QDate.currentDate())
         self.enregistrer.setText("Enregistrer")
         self.enregistrer.disconnect()
         self.enregistrer.clicked.connect(self.save_documents)
