@@ -614,17 +614,19 @@ class Recapitulatifs(QFrame):
                     
                     if multi_line:
                         motors_list.append(
-                            f"{alert_icon}ATA: 72\n"
-                            f"Marque: {m[0]}\n"
-                            f"N° série: {m[1]}\n"
-                            f"Potentiel: {m[2]} mois / {m[3]} heures / {m[4]} cycles\n"
-                            f"Date Proc rev: {date_rev} \n"
-                            f"Potentiel restant heures: {pot_restant_formatted}h\n"
-                            f"Potentiel restant cycles: {m[6]}c\n"
+                            f"{alert_icon}<b>ATA: 72</b> <br>"
+                            f"Marque: {m[0]} <br>"
+                            f"N° série: {m[1]} <br>"
+                            f"Potentiel: {m[2]} mois / {m[3]} heures / {m[4]} cycles<br>"
+                            f"Date Proc rev: {date_rev} <br>"
+                            f"Potentiel restant heures: {pot_restant_formatted}h<br>"
+                            f"Potentiel restant cycles: {m[6]}c<br>"
+                            "*************************************** <br> <br>"
+                            
                         )
                     else:
                         motors_list.append(
-                            f"{alert_icon}ATA 72: Marque {m[0]} N° série {m[1]} Potentiel {m[2]}m/{m[3]}h/{m[4]}c Potentiel restant heures {pot_restant_formatted}h Potentiel restant cycles {m[6]}c Date proc rev: {date_rev}"
+                            f"{alert_icon}ATA: 72: Marque {m[0]} N° série {m[1]} Potentiel {m[2]}m/{m[3]}h/{m[4]}c Potentiel restant heures {pot_restant_formatted}h Potentiel restant cycles {m[6]}c Date proc rev: {date_rev}"
                         )
                 data[2] = ("\n\n" if multi_line else "\n").join(motors_list)
         except Exception as e:
@@ -676,17 +678,19 @@ class Recapitulatifs(QFrame):
                     
                     if multi_line:
                         props_list.append(
-                            f"{alert_icon}ATA: 61\n"
-                            f"Marque: {p[0]}\n"
-                            f"N° série: {p[1]}\n"
-                            f"Potentiel: {p[2]} mois / {p[3]} heures / {p[4]} cycles\n"
-                            f"Date Proc rev: {date_rev} \n"
-                            f"Potentiel restant heures: {pot_restant_formatted}h\n"
-                            f"Potentiel restant cycles: {p[6]}c\n"
+                            f"{alert_icon} <b>ATA: 61</b> <br>"
+                            f"Marque: {p[0]} <br>"
+                            f"N° série: {p[1]} <br>"
+                            f"Potentiel: {p[2]} mois / {p[3]} heures / {p[4]} cycles<br>"
+                            f"Date Proc rev: {date_rev} <br>"
+                            f"Potentiel restant heures: {pot_restant_formatted}h<br>"
+                            f"Potentiel restant cycles: {p[6]}c<br>"
+                            "******************************************* <br> <br>"
+                            
                         )
                     else:
                         props_list.append(
-                            f"{alert_icon}ATA 61: Marque {p[0]} N° série {p[1]} Potentiel {p[2]}m/{p[3]}h/{p[4]}c Potentiel restant heures {pot_restant_formatted}h Potentiel restant cycles {p[6]}c Date proc rev: {date_rev}"
+                            f"{alert_icon} ATA: 61: Marque {p[0]} N° série {p[1]} Potentiel {p[2]}m/{p[3]}h/{p[4]}c Potentiel restant heures {pot_restant_formatted}h Potentiel restant cycles {p[6]}c Date proc rev: {date_rev}"
                         )
                 data[3] = ("\n\n" if multi_line else "\n").join(props_list)
         except Exception as e:
@@ -706,12 +710,13 @@ class Recapitulatifs(QFrame):
                 for ata, desc, pot_m, pot_h, pot_c, pot_rest_h, pot_rest_c, dates_proc_rev in rows:
                     if multi_line:
                         temps_list.append(
-                            f"ATA: {ata}\n"
-                            f"Description: {desc}\n"
-                            f"Potentiel: {pot_m} mois / {pot_h} heures / {pot_c} cycles\n"
-                            f"Date proc rev: {dates_proc_rev}\n"
-                            f"Potentiel restant heures: {pot_rest_h}h\n"
-                            f"Potentiel restant cycles: {pot_rest_c}c\n"
+                            f"<b> ATA: {ata}</b> <br>"
+                            f"Description: <b>{desc}</b> <br>"
+                            f"Potentiel: {pot_m} mois / {pot_h} heures / {pot_c} cycles<br>"
+                            f"Date proc rev: {dates_proc_rev}<br>"
+                            f"Potentiel restant heures: {pot_rest_h}h<br>"
+                            f"Potentiel restant cycles: {pot_rest_c}c<br>"
+                            "******************************************** <br> <br>"
                         )
                     else:
                         temps_list.append(
